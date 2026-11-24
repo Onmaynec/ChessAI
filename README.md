@@ -122,7 +122,7 @@ Windows `.bat` и CUDA на физической RTX 3050 в тестовом к
 
 ## Автор 👤
 
-**Chess AI** · Локальная исследовательская система · Windows 10/11 x64
+**Kufik** (Onmaynec) · they/them · [@Onmaynec](https://github.com/Onmaynec)
 
 ---
 
