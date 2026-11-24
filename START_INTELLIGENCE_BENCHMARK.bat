@@ -19,8 +19,17 @@ set "PICK=%ERRORLEVEL%"
 set "PROFILE=quick"
 if "%PICK%"=="2" set "PROFILE=standard"
 if "%PICK%"=="3" set "PROFILE=full"
-set "OUT=benchmark_reports\v091_%RANDOM%_%RANDOM%"
-"%CHESSAI_PYTHON%" -m benchmark.run --run "%RUN%" --engine "%ENGINE%" --output "%OUT%" --profile "%PROFILE%"
+echo.
+echo Training overlap audit:
+echo 1. Fast diagnostic - skip archive scan ^(not independent holdout^)
+echo 2. Full read-only archive scan with progress
+choice /C 12 /N /M "Audit mode: "
+set "AUDIT_PICK=%ERRORLEVEL%"
+if not "%AUDIT_PICK%"=="1" if not "%AUDIT_PICK%"=="2" goto :fail
+set "AUDIT_ARG="
+if "%AUDIT_PICK%"=="1" set "AUDIT_ARG=--skip-audit"
+set "OUT=benchmark_reports\v092_%RANDOM%_%RANDOM%"
+"%CHESSAI_PYTHON%" -m benchmark.run --run "%RUN%" --engine "%ENGINE%" --output "%OUT%" --profile "%PROFILE%" %AUDIT_ARG%
 if errorlevel 1 goto :fail
 echo Saved: %OUT%\report.md
 pause

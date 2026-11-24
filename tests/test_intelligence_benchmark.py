@@ -1,6 +1,10 @@
 import unittest
+import gzip
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from benchmark.stats import score, summary, paired_rows, fit_ratings, rating_report, percentile
-from benchmark.suite import load_suite, signature, prove_mate
+from benchmark.suite import load_suite, signature, prove_mate, audit_sources
 
 def pair(a,b,opening,result1='1-0',result2='0-1'):
     return [dict(a=a,b=b,opening=opening,white=a,start_fen='fen'+str(opening),result=result1),
@@ -41,6 +45,27 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(len(digest),64)
         self.assertEqual(len({signature(c['fen']) for c in payload['cases']}),18)
         self.assertEqual({c['category'] for c in payload['cases']},{'mate1','mate2','fork','pin','sacrifice','defense','endgame'})
+
+    def test_audit_plain_and_gzip_progress(self):
+        with TemporaryDirectory() as folder:
+            root=Path(folder)
+            plain=root/'experience.jsonl'
+            archive=root/'segment.jsonl.gz'
+            fen='8/8/8/8/8/8/4P3/8 w - - 0 1'
+            cases=[{'id':'target','fen':fen}]
+            plain.write_text(json.dumps({'fen':fen})+'\ninvalid\n',encoding='utf-8')
+            with gzip.open(archive,'wt',encoding='utf-8') as f:
+                f.write(json.dumps({'fen':fen.replace('0 1','3 5')})+'\n')
+            messages=[]
+            result=audit_sources([archive,plain],cases,progress=messages.append)
+            self.assertEqual(result['records_checked'],2)
+            self.assertEqual(result['malformed_records'],1)
+            self.assertEqual(result['overlapping_ids'],['target'])
+            self.assertIn('partial',result['status'])
+            self.assertTrue(any('Finished 2/2' in m for m in messages))
+
+    def test_empty_audit_is_not_certified(self):
+        self.assertEqual(audit_sources([],[],progress=lambda _:None)['status'],'no readable experience')
 
     def test_mate_terminal_sign(self):
         state={'finished':True,'result':'0-1'}

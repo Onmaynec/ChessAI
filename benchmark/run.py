@@ -127,8 +127,19 @@ def main(argv=None):
     if any(part.lower() in ('runs','models','config','checkpoints','.venv','.venv-cuda') for part in out.parts):
         p.error('Report directory must be outside training/config directories')
     out.mkdir(parents=True,exist_ok=False)
+    print('[BENCHMARK] Hashing checkpoints...',flush=True)
     hashes={n:digest(path) for n,path in paths.items()}
-    audit=audit_experience(a.run,cases) if not a.skip_audit else {'status':'not requested','overlapping_ids':[]}
+    if a.skip_audit:
+        print('[AUDIT] SKIPPED: diagnostic results only; training overlap unknown.',flush=True)
+    else:
+        print('[AUDIT] Scanning selected run experience (read-only)...',flush=True)
+    try:
+        audit=audit_experience(a.run,cases) if not a.skip_audit else {'status':'not requested','overlapping_ids':[]}
+    except (KeyboardInterrupt,OSError,EOFError) as exc:
+        write_json(out/'report.json',{'schema':'intelligence_benchmark_v1','status':'interrupted' if isinstance(exc,KeyboardInterrupt) else 'failed','phase':'audit','suite_sha256':suite_hash,'audit':{'status':'incomplete'},'error':str(exc)})
+        print('[AUDIT] Incomplete; no strength results produced. Restart in a new report directory.',flush=True)
+        raise
+    print('[BENCHMARK] Audit status:',audit['status'],flush=True)
     excluded=set(audit['overlapping_ids'])
     report={'schema':'intelligence_benchmark_v1','status':'running','created_at':datetime.now(timezone.utc).isoformat(),
             'suite':payload['version'],'suite_sha256':suite_hash,'engine_sha256':digest(a.engine),
@@ -153,7 +164,8 @@ def main(argv=None):
                     if device.type=='cuda':
                         torch.cuda.synchronize(device);torch.cuda.reset_peak_memory_stats(device)
                     rows=[];latency=[]
-                    for case in cases:
+                    for case_index,case in enumerate(cases,1):
+                        print(f'  [{mode}] {case_index}/{len(cases)} {case["id"]}',flush=True)
                         if case['id'] in excluded:
                             rows.append({'id':case['id'],'category':case['category'],'status':'overlap_excluded'});continue
                         state=bridge.new(910030,case['fen'])
