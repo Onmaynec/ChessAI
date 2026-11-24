@@ -96,7 +96,7 @@ def main(argv=None):
     p.add_argument('--output',type=Path,required=True,help='New report directory outside runs/models/config')
     p.add_argument('--agents',nargs='+')
     p.add_argument('--candidate',type=Path,help='Optional separate experimental checkpoint')
-    p.add_argument('--suite',choices=['v1','v2'],default='v2')
+    p.add_argument('--suite',choices=['v1','v2','v3'],default='v3')
     p.add_argument('--profile',choices=['quick','standard','full'],default='standard')
     p.add_argument('--pairs',type=int,default=None)
     p.add_argument('--max-plies',type=int,default=240)
@@ -178,7 +178,7 @@ def main(argv=None):
                         latency.append(ms)
                         rows.append({'id':case['id'],'category':case['category'],'side':state['fen'].split()[1],
                                      'status':'fallback' if detail.get('mode')=='neural_fallback' else 'scored',
-                                     'move':move,'accepted':expected[case['id']],
+                                     'move':move,'accepted':expected[case['id']],'v3_new':case.get('v3_new',False),
                                      'correct':move in expected[case['id']],'latency_ms':ms,
                                      'actual_depth':detail.get('search_depth'), 'top3':detail.get('top3')})
                     cats=category_report(rows)
@@ -230,7 +230,7 @@ def main(argv=None):
         report['status']='interrupted' if isinstance(exc,KeyboardInterrupt) else 'failed'
         report['error']=str(exc);write_json(out/'report.json',report);raise
     write_json(out/'report.json',report)
-    lines=['# Intelligence Benchmark v0.9.3','',f"Status: {report['status']} | device: {device} | suite: {suite_hash[:12]}",
+    lines=['# Intelligence Benchmark v0.9.3.2','',f"Status: {report['status']} | device: {device} | suite: {suite_hash[:12]}",
            '', 'Internal ratings only. Curated motif targets are not certified optimal moves. Small groups are diagnostic.','']
     for n,results in report['agents'].items():
         lines.extend(['## '+n,'','| Mode | Category | Correct / scored |','|---|---|---|'])

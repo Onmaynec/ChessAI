@@ -1,0 +1,557 @@
+{
+  "version": "benchmark_v3",
+  "purpose": "evaluation_only",
+  "provenance": "Authored synthetic positions, color-reflected pairs. Mates proven at runtime by C++ legal tree; other answers are curated motif targets, not global optimality claims. V2 accepts both captures of the pinned queen; adds 8 distinct authored positions (four reflected pairs). V3 adds 30 newly authored diagnostic cases (15 color-reflected pairs); v3_new=true. All new mate tasks exhaustively checked by bridge at runtime.",
+  "cases": [
+    {
+      "id": "mate_corner_w",
+      "category": "mate1",
+      "fen": "7k/8/5KQ1/8/8/8/8/8 w - - 0 1",
+      "accepted": [],
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Forced mate in one, all proven moves accepted."
+    },
+    {
+      "id": "mate_corner_b",
+      "category": "mate1",
+      "fen": "8/8/8/8/8/5kq1/8/7K b - - 0 1",
+      "accepted": [],
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Forced mate in one, all proven moves accepted."
+    },
+    {
+      "id": "mate_edge_w",
+      "category": "mate1",
+      "fen": "k7/2K5/8/8/8/8/8/1Q6 w - - 0 1",
+      "accepted": [],
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Forced mate in one."
+    },
+    {
+      "id": "mate_edge_b",
+      "category": "mate1",
+      "fen": "1q6/8/8/8/8/8/2k5/K7 b - - 0 1",
+      "accepted": [],
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Forced mate in one."
+    },
+    {
+      "id": "mate_two_d_w",
+      "category": "mate2",
+      "fen": "k7/8/8/K7/8/8/8/3Q4 w - - 0 1",
+      "accepted": [],
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Exact mate in two; proof required."
+    },
+    {
+      "id": "mate_two_d_b",
+      "category": "mate2",
+      "fen": "3q4/8/8/8/k7/8/8/K7 b - - 0 1",
+      "accepted": [],
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Exact mate in two; proof required."
+    },
+    {
+      "id": "mate_two_f_w",
+      "category": "mate2",
+      "fen": "k7/8/8/K7/8/8/8/5Q2 w - - 0 1",
+      "accepted": [],
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Exact mate in two; proof required."
+    },
+    {
+      "id": "mate_two_f_b",
+      "category": "mate2",
+      "fen": "5q2/8/8/8/k7/8/8/K7 b - - 0 1",
+      "accepted": [],
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Exact mate in two; proof required."
+    },
+    {
+      "id": "knight_fork_w",
+      "category": "fork",
+      "fen": "r3k3/8/4N3/8/8/8/8/6K1 w - - 0 1",
+      "accepted": [
+        "e6c7"
+      ],
+      "note": "Knight check forks king and rook; curated motif move, not unique optimal play."
+    },
+    {
+      "id": "knight_fork_b",
+      "category": "fork",
+      "fen": "6k1/8/8/8/8/4n3/8/R3K3 b - - 0 1",
+      "accepted": [
+        "e3c2"
+      ],
+      "note": "Knight check forks king and rook; curated motif move, not unique optimal play."
+    },
+    {
+      "id": "pinned_queen_w",
+      "category": "pin",
+      "fen": "4k3/4q3/8/8/1B6/8/8/4R1K1 w - - 0 1",
+      "accepted": [
+        "e1e7",
+        "b4e7"
+      ],
+      "note": "Capture pinned queen; bishop protects e7."
+    },
+    {
+      "id": "pinned_queen_b",
+      "category": "pin",
+      "fen": "4r1k1/8/8/1b6/8/8/4Q3/4K3 b - - 0 1",
+      "accepted": [
+        "e8e2",
+        "b5e2"
+      ],
+      "note": "Capture pinned queen; bishop protects e7."
+    },
+    {
+      "id": "queen_sacrifice_w",
+      "category": "sacrifice",
+      "fen": "3r2k1/5ppp/8/8/8/8/4Q3/4R1K1 w - - 0 1",
+      "accepted": [
+        "e2e8"
+      ],
+      "mate_plies": 3,
+      "exact": false,
+      "note": "Queen sacrifice leads to forced mate within two."
+    },
+    {
+      "id": "queen_sacrifice_b",
+      "category": "sacrifice",
+      "fen": "4r1k1/4q3/8/8/8/8/5PPP/3R2K1 b - - 0 1",
+      "accepted": [
+        "e7e1"
+      ],
+      "mate_plies": 3,
+      "exact": false,
+      "note": "Queen sacrifice leads to forced mate within two."
+    },
+    {
+      "id": "defend_check_w",
+      "category": "defense",
+      "fen": "7k/8/8/R5q1/8/8/8/6K1 w - - 0 1",
+      "accepted": [
+        "a5g5"
+      ],
+      "note": "Capture checking queen."
+    },
+    {
+      "id": "defend_check_b",
+      "category": "defense",
+      "fen": "6k1/8/8/8/r5Q1/8/8/7K b - - 0 1",
+      "accepted": [
+        "a4g4"
+      ],
+      "note": "Capture checking queen."
+    },
+    {
+      "id": "promotion_w",
+      "category": "endgame",
+      "fen": "8/P6k/8/8/8/8/8/6K1 w - - 0 1",
+      "accepted": [
+        "a7a8q",
+        "a7a8r"
+      ],
+      "note": "Promote to queen or rook; curated winning-material target."
+    },
+    {
+      "id": "promotion_b",
+      "category": "endgame",
+      "fen": "6k1/8/8/8/8/8/p6K/8 b - - 0 1",
+      "accepted": [
+        "a2a1q",
+        "a2a1r"
+      ],
+      "note": "Promote to queen or rook; curated winning-material target."
+    },
+    {
+      "id": "rook_mate_w",
+      "category": "mate1",
+      "fen": "7k/8/6K1/8/8/8/8/R7 w - - 0 1",
+      "accepted": [],
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Rook mate, all proven moves."
+    },
+    {
+      "id": "rook_mate_b",
+      "category": "mate1",
+      "fen": "r7/8/8/8/8/6k1/8/7K b - - 0 1",
+      "accepted": [],
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Rook mate, all proven moves."
+    },
+    {
+      "id": "backrank_w",
+      "category": "mate1",
+      "fen": "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1",
+      "accepted": [],
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Back rank mate."
+    },
+    {
+      "id": "backrank_b",
+      "category": "mate1",
+      "fen": "r5k1/8/8/8/8/8/5PPP/6K1 b - - 0 1",
+      "accepted": [],
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Back rank mate."
+    },
+    {
+      "id": "pawn_capture_w",
+      "category": "capture",
+      "fen": "7k/8/8/8/3q4/4P3/8/6K1 w - - 0 1",
+      "accepted": [
+        "e3d4"
+      ],
+      "note": "Capture hanging queen."
+    },
+    {
+      "id": "pawn_capture_b",
+      "category": "capture",
+      "fen": "6k1/8/4p3/3Q4/8/8/8/7K b - - 0 1",
+      "accepted": [
+        "e6d5"
+      ],
+      "note": "Capture hanging queen."
+    },
+    {
+      "id": "knight_capture_w",
+      "category": "capture",
+      "fen": "7k/8/8/3q4/8/4N3/8/6K1 w - - 0 1",
+      "accepted": [
+        "e3d5"
+      ],
+      "note": "Capture hanging queen."
+    },
+    {
+      "id": "knight_capture_b",
+      "category": "capture",
+      "fen": "6k1/8/4n3/8/3Q4/8/8/7K b - - 0 1",
+      "accepted": [
+        "e6d4"
+      ],
+      "note": "Capture hanging queen."
+    },
+    {
+      "id": "qmate_c4_w",
+      "category": "mate1",
+      "fen": "8/8/8/8/2Q5/2K5/8/2k5 w - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "qmate_c4_b",
+      "category": "mate1",
+      "fen": "2K5/8/2k5/2q5/8/8/8/8 b - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "qmate_c5_w",
+      "category": "mate1",
+      "fen": "8/8/8/2Q5/8/8/k1K5/8 w - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "qmate_c5_b",
+      "category": "mate1",
+      "fen": "8/K1k5/8/8/2q5/8/8/8 b - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "qmate_g4_w",
+      "category": "mate1",
+      "fen": "8/8/5K1k/8/6Q1/8/8/8 w - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "qmate_g4_b",
+      "category": "mate1",
+      "fen": "8/8/8/6q1/8/5k1K/8/8 b - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "qmate_d6_w",
+      "category": "mate1",
+      "fen": "8/8/3Q4/8/8/7k/5K2/8 w - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "qmate_d6_b",
+      "category": "mate1",
+      "fen": "8/5k2/7K/8/8/3q4/8/8 b - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "qmate_b2_w",
+      "category": "mate1",
+      "fen": "8/8/8/8/8/4K3/1Q6/4k3 w - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "qmate_b2_b",
+      "category": "mate1",
+      "fen": "4K3/1q6/4k3/8/8/8/8/8 b - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 1,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "mate_two_c8_w",
+      "category": "mate2",
+      "fen": "2k5/8/8/3K4/8/8/8/1Q6 w - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "mate_two_c8_b",
+      "category": "mate2",
+      "fen": "1q6/8/8/8/3k4/8/8/2K5 b - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "mate_two_rook_g4_w",
+      "category": "mate2",
+      "fen": "2K5/k7/8/8/6R1/8/8/8 w - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "mate_two_rook_g4_b",
+      "category": "mate2",
+      "fen": "8/8/8/6r1/8/8/K7/2k5 b - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "mate_two_g1_w",
+      "category": "mate2",
+      "fen": "8/8/5Q2/8/7K/8/8/6k1 w - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "mate_two_g1_b",
+      "category": "mate2",
+      "fen": "6K1/8/8/7k/8/5q2/8/8 b - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "mate_two_c1_w",
+      "category": "mate2",
+      "fen": "8/8/8/5Q2/3K4/8/8/2k5 w - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "mate_two_c1_b",
+      "category": "mate2",
+      "fen": "2K5/8/8/3k4/5q2/8/8/8 b - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "mate_two_rook_c3_w",
+      "category": "mate2",
+      "fen": "8/8/7k/5K2/8/2R5/8/8 w - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "mate_two_rook_c3_b",
+      "category": "mate2",
+      "fen": "8/8/2r5/8/5k2/7K/8/8 b - - 0 1",
+      "accepted": [],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": true,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "fork_d5_w",
+      "category": "fork",
+      "fen": "8/3r3k/8/3N4/8/8/8/K7 w - - 0 1",
+      "accepted": [
+        "d5f6"
+      ],
+      "v3_new": true,
+      "note": "Curated motif target, not global optimality proof."
+    },
+    {
+      "id": "fork_d5_b",
+      "category": "fork",
+      "fen": "k7/8/8/8/3n4/8/3R3K/8 b - - 0 1",
+      "accepted": [
+        "d4f3"
+      ],
+      "v3_new": true,
+      "note": "Curated motif target, not global optimality proof."
+    },
+    {
+      "id": "fork_c4_w",
+      "category": "fork",
+      "fen": "8/8/2r3k1/8/2N5/8/8/K7 w - - 0 1",
+      "accepted": [
+        "c4e5"
+      ],
+      "v3_new": true,
+      "note": "Curated motif target, not global optimality proof."
+    },
+    {
+      "id": "fork_c4_b",
+      "category": "fork",
+      "fen": "k7/8/8/2n5/8/2R3K1/8/8 b - - 0 1",
+      "accepted": [
+        "c5e4"
+      ],
+      "v3_new": true,
+      "note": "Curated motif target, not global optimality proof."
+    },
+    {
+      "id": "pin_c7_w",
+      "category": "pin",
+      "fen": "2k5/2q5/8/8/5B2/8/8/2R3K1 w - - 0 1",
+      "accepted": [
+        "f4c7",
+        "c1c7"
+      ],
+      "v3_new": true,
+      "note": "Curated motif target, not global optimality proof."
+    },
+    {
+      "id": "pin_c7_b",
+      "category": "pin",
+      "fen": "2r3k1/8/8/5b2/8/8/2Q5/2K5 b - - 0 1",
+      "accepted": [
+        "f5c2",
+        "c8c2"
+      ],
+      "v3_new": true,
+      "note": "Curated motif target, not global optimality proof."
+    },
+    {
+      "id": "pin_g7_w",
+      "category": "pin",
+      "fen": "6k1/6r1/8/8/3B4/8/8/6RK w - - 0 1",
+      "accepted": [
+        "d4g7",
+        "g1g7"
+      ],
+      "v3_new": true,
+      "note": "Curated motif target, not global optimality proof."
+    },
+    {
+      "id": "pin_g7_b",
+      "category": "pin",
+      "fen": "6rk/8/8/3b4/8/8/6R1/6K1 b - - 0 1",
+      "accepted": [
+        "d5g2",
+        "g8g2"
+      ],
+      "v3_new": true,
+      "note": "Curated motif target, not global optimality proof."
+    },
+    {
+      "id": "sacrifice_d8_w",
+      "category": "sacrifice",
+      "fen": "2r3k1/5ppp/8/8/8/8/3Q4/3R2K1 w - - 0 1",
+      "accepted": [
+        "d2d8"
+      ],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    },
+    {
+      "id": "sacrifice_d8_b",
+      "category": "sacrifice",
+      "fen": "3r2k1/3q4/8/8/8/8/5PPP/2R3K1 b - - 0 1",
+      "accepted": [
+        "d7d1"
+      ],
+      "v3_new": true,
+      "mate_plies": 3,
+      "exact": false,
+      "note": "Runtime mate proof required."
+    }
+  ]
+}
