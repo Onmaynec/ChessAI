@@ -57,13 +57,13 @@ def children(bridge,state):
         out[m]=bridge.step(930002,m)
     return out
 
-def label(bridge,engine,state,depth):
+def label(bridge,engine,state,depth,mastery=False):
     from neural.intelligence import evaluate_fens
     moves=children(bridge,state)
     side=state['fen'].split()[1]
     win='1-0' if side=='w' else '0-1'
     immediate=[m for m,s in moves.items() if s['finished'] and s['result']==win and s.get('reason')=='checkmate']
-    if immediate:
+    if immediate and not mastery:
         return immediate,'mate1',29999,describe(state['fen'],immediate[0],moves[immediate[0]]['fen'],29999)
     live=[(m,s) for m,s in moves.items() if not s['finished']]
     scores={}
@@ -74,7 +74,9 @@ def label(bridge,engine,state,depth):
         scores[m]=v-1 if v>=29000 else v+1 if v<=-29000 else v
     if not scores:return None
     best=max(scores.values());chosen=max(scores,key=scores.get)
-    if best>=29000:
+    if immediate:
+        accepted=sorted(immediate);category='mate1'
+    elif best>=29000:
         accepted=sorted(m for m,v in scores.items() if v==best)
         category='mate2_plus'
     else:
@@ -85,6 +87,9 @@ def label(bridge,engine,state,depth):
         category=None
     tags=describe(state['fen'],chosen,moves[chosen]['fen'],best)
     kinds={t['kind'] for t in tags}
+    if mastery and category=='mate2_plus' and 'possible_sacrifice' in kinds:
+        # Require an actual legal capture of the offered piece, not just attack geometry.
+        if any(m[2:4]==chosen[2:4] for m in moves[chosen]['legal_moves']):category='mate_sacrifice'
     if category is None:
         category=next((k for k in ('promotion','check_evasion','pin_capture','fork','pin','discovered_attack') if k in kinds),None)
         if category is None:
@@ -93,9 +98,9 @@ def label(bridge,engine,state,depth):
             from .tactics import square
             if enemy(b[square(chosen[2:4])],side):category='capture'
             else:return None
-    return accepted,category,best,tags
+    return (accepted,category,best,tags,scores) if mastery else (accepted,category,best,tags)
 
-def generate(engine,out,count,depth,seed,attempts,validation_count=None,resume=False):
+def generate(engine,out,count,depth,seed,attempts,validation_count=None,resume=False,mastery=False):
     from benchmark.suite import load_suite
     validation_count=validation_count if validation_count is not None else max(2,round(count/6))
     suite_dir=Path(__file__).resolve().parents[1]/'benchmark'
@@ -105,7 +110,7 @@ def generate(engine,out,count,depth,seed,attempts,validation_count=None,resume=F
         suite_hashes[path.name]=sha
         forbidden.update(canonical(c['fen']) for c in payload['cases'])
     if not forbidden:raise ValueError('Benchmark exclusion set missing')
-    config={'schema':'tactical_data_v2','seed':seed,'depth':depth,'count':count,
+    config={'schema':'tactical_data_v3' if mastery else 'tactical_data_v2','seed':seed,'depth':depth,'count':count,
             'validation_count':validation_count,'engine_sha256':hash_file(engine),'suite_hashes':suite_hashes}
     with experiment_lock(out):
         return generate_locked(engine,out,config,attempts,forbidden,resume)
@@ -115,6 +120,9 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
     from neural.agent import START_FEN
     from neural.intelligence import SearchUnavailable
     count=config['count'];depth=config['depth'];seed=config['seed']
+    mastery=config['schema']=='tactical_data_v3'
+    from .mastery import quotas,deficits,targeted_fen,validate_scores
+    target=quotas(count) if mastery else None
     journal=out/'generation_state.json';pool=out/'pool.jsonl'
     if journal.exists():
         if not resume:raise ValueError('Experiment exists; use --resume')
@@ -135,6 +143,7 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
                     f.seek(pos);f.truncate();break
                 row=json.loads(line);key=canonical(row['fen'])
                 if key in seen or row['source'] in sources:raise ValueError('Pool duplicate or benchmark overlap')
+                if mastery:validate_scores(row)
                 seen.add(key);sources.add(row['source']);rows.append(row);counts[row['category']]+=1
     cursor=max(state['next_attempt'],max((int(r['source'].split(':')[-1])+1 for r in rows),default=0))
     failures=state['teacher_failures'];consecutive=0
@@ -151,7 +160,17 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
                         print(f'[DATA] attempt {i}/{attempts} | {len(rows)}/{count} | {dict(counts)}',flush=True)
                     # Per-attempt seed makes replays independent of interruption.
                     rng=random.Random(seed*1000003+i)
-                    if i%3!=1:
+                    if mastery and i%4!=1:
+                        remaining=deficits(counts,target)
+                        keys=list(remaining);weights=[remaining[k]+.05 for k in keys]
+                        focus=rng.choices(keys,weights=weights)[0]
+                        fen=targeted_fen(rng,focus)
+                        if not fen:cursor=i+1;continue
+                        try:position=bridge.new(930001,fen)
+                        except RuntimeError:
+                            if bridge.proc.poll() is not None:raise
+                            cursor=i+1;continue
+                    elif not mastery and i%3!=1:
                         fen=sparse_fen(rng,extra=i%3==2)
                         if not fen:cursor=i+1;continue
                         try:position=bridge.new(930001,fen)
@@ -173,7 +192,9 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
                     try:
                         # Cheap screening, then independently recompute all legal scores at target depth.
                         result=label(bridge,engine,position,min(2,depth))
-                        if result and depth>2 and result[1]!='mate1':
+                        if result and mastery:
+                            result=label(bridge,engine,position,depth,mastery=True)
+                        elif result and depth>2 and result[1]!='mate1':
                             result=label(bridge,engine,position,depth)
                         consecutive=0
                     except SearchUnavailable:
@@ -181,10 +202,16 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
                         if consecutive>=10:raise RuntimeError('Ten consecutive teacher failures; reduce depth or inspect engine')
                         continue
                     if not result:cursor=i+1;continue
-                    moves,category,cp,tags=result
-                    if counts[category]>=cap:cursor=i+1;continue
+                    moves,category,cp,tags=result[:4]
+                    if mastery:
+                        # Strict category targets initially; explicit relaxed cap after 15 attempts per target row.
+                        limit=target.get(category,0) if i<15*count else max(target.get(category,0),cap)
+                    else:limit=cap
+                    if counts[category]>=limit:cursor=i+1;continue
                     row={'fen':position['fen'],'accepted':moves,'legal':position['legal_moves'],
                          'category':category,'teacher_cp':cp,'evidence':tags,'source':f'generated:{seed}:{i}'}
+                    if mastery:
+                        row['move_scores']=result[4];validate_scores(row)
                     f.write((json.dumps(row)+'\n').encode('utf-8'));f.flush();os.fsync(f.fileno())
                     rows.append(row);seen.add(key);counts[category]+=1;cursor=i+1
                     if len(rows)%10==0 or len(rows)==count:
@@ -206,6 +233,9 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
           'category_splits':distribution,'missing_validation_categories':sorted(set(counts)-set(distribution['validation'])),
           'teacher_failures':failures,'excluded_signatures':len(forbidden),'complete':True,
           'dataset_sha256':hash_file(path)}
+    if mastery:
+        meta.update(target_quotas=target,quota_shortfalls=deficits(counts,target),
+                    quota_relaxed=any(counts[k]>v for k,v in target.items()),score_schema='all_legal_cp_v1')
     atomic_json(out/'dataset_meta.json',meta)
     print('[DATA] Complete:',meta,flush=True)
 
@@ -215,9 +245,10 @@ def main():
     p.add_argument('--count',type=int,default=600);p.add_argument('--validation-count',type=int)
     p.add_argument('--depth',type=int,default=3);p.add_argument('--seed',type=int,default=9312026)
     p.add_argument('--attempts',type=int,default=30000);p.add_argument('--resume',action='store_true')
+    p.add_argument('--mastery',action='store_true',help='Full teacher scores and targeted category quotas')
     a=p.parse_args()
     val=a.validation_count if a.validation_count is not None else max(2,round(a.count/6))
     if not a.engine.is_file() or not 10<=a.count<=20000 or not 2<=a.depth<=5 or not a.count<=a.attempts<=2000000 or not 2<=val<=a.count-2:p.error('Invalid engine or budget')
-    generate(a.engine,output_dir(a.output,a.resume),a.count,a.depth,a.seed,a.attempts,val,a.resume)
+    generate(a.engine,output_dir(a.output,a.resume),a.count,a.depth,a.seed,a.attempts,val,a.resume,a.mastery)
 
 if __name__=='__main__':main()
