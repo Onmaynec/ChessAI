@@ -258,7 +258,8 @@ void interactive(int depth){
             }
             if(!apply_uci(p,input)){std::cout<<"Illegal move; use UCI coordinate notation.\n";continue;}
         }else{
-            auto result=search_baseline(p,depth);
+            SearchLimits limits;limits.depth=depth;
+            auto result=search_deep(p,limits);
             if(!result.best)break;
             std::cout<<"Baseline engine plays "<<uci(*result.best)<<" (score cp "<<result.score_cp<<")\n";
             p=make_move(p,*result.best);
@@ -267,40 +268,85 @@ void interactive(int depth){
     }
 }
 void uci_session(){
-    Position p=parse_fen(std::string(START_FEN));std::string line;
+    Position p=parse_fen(std::string(START_FEN));
+    std::vector<std::string> prior;
+    unsigned hash_mb=16;
+    std::string line;
     while(std::getline(std::cin,line)){
         std::istringstream in(line);std::string cmd;
         in>>cmd;
         if(cmd=="quit")break;
-        if(cmd=="uci")std::cout<<"id name ChessAI-Core-0.4-Baseline\nid author Local Chess AI Project\nuciok\n";
+        if(cmd=="uci")std::cout<<"id name ChessAI-Core-0.9.2-DeepSearch\nid author Local Chess AI Project\noption name Hash type spin default 16 min 0 max 256\nuciok\n";
         else if(cmd=="isready")std::cout<<"readyok\n";
-        else if(cmd=="ucinewgame")p=parse_fen(std::string(START_FEN));
+        else if(cmd=="ucinewgame"){p=parse_fen(std::string(START_FEN));prior.clear();}
+        else if(cmd=="setoption"){
+            std::string name,key,value,amount;in>>name>>key>>value>>amount;
+            if(name=="name"&&key=="Hash"&&value=="value")
+                try{hash_mb=static_cast<unsigned>(integer(amount,0,256,"Hash"));}catch(...){}
+        }
         else if(cmd=="position"){
             std::string first;in>>first;
-            if(first=="startpos")p=parse_fen(std::string(START_FEN));
+            Position next;
+            if(first=="startpos")next=parse_fen(std::string(START_FEN));
             else if(first=="fen"){
                 std::string parts[6],fen;
                 bool ok=true;
                 for(auto& part:parts)if(!(in>>part))ok=false;
                 if(!ok){std::cout<<"info string Invalid position FEN\n";continue;}
                 for(auto& part:parts){if(!fen.empty())fen+=' ';fen+=part;}
-                try{p=parse_fen(fen);}catch(const std::exception& ex){std::cout<<"info string "<<ex.what()<<'\n';continue;}
+                try{next=parse_fen(fen);}catch(const std::exception& ex){std::cout<<"info string "<<ex.what()<<'\n';continue;}
             }else continue;
+            std::vector<std::string> keys;
             std::string marker;in>>marker;
+            bool ok=true;
             if(marker=="moves"){
                 std::string m;
-                while(in>>m)if(!apply_uci(p,m)){
-                    std::cout<<"info string Illegal move in position: "<<m<<'\n';break;
+                while(in>>m){
+                    auto previous=repetition_key(next);
+                    if(!apply_uci(next,m)){std::cout<<"info string Illegal move in position: "<<m<<'\n';ok=false;break;}
+                    if(next.halfmove==0)keys.clear();else keys.push_back(previous);
                 }
             }
+            if(ok){p=next;prior=std::move(keys);}
         } else if(cmd=="go") {
-            int depth=3;std::string token;
-            while(in>>token)if(token=="depth"){
-                std::string count;
-                if(in>>count)try{depth=integer(count,1,6,"depth");}catch(...){}
+            SearchLimits limits;limits.hash_mb=hash_mb;
+            bool explicit_depth=false;
+            uint64_t wtime=0,btime=0,winc=0,binc=0,movestogo=30;
+            bool clock=false;
+            std::string token;
+            while(in>>token){
+                if(token!="depth"&&token!="nodes"&&token!="movetime"&&token!="wtime"&&token!="btime"&&token!="winc"&&token!="binc"&&token!="movestogo")continue;
+                std::string amount;if(!(in>>amount))break;
+                try{
+                    if(amount.empty()||amount.find_first_not_of("0123456789")!=std::string::npos)continue;
+                    uint64_t n=std::stoull(amount);
+                    if(token=="depth"){limits.depth=static_cast<int>(std::max<uint64_t>(1,std::min<uint64_t>(12,n)));explicit_depth=true;}
+                    else if(token=="nodes")limits.nodes=std::max<uint64_t>(1,n);
+                    else if(token=="movetime")limits.movetime_ms=std::max<uint64_t>(1,std::min<uint64_t>(3600000,n));
+                    else if(token=="wtime"){wtime=std::min<uint64_t>(86400000,n);clock=true;}
+                    else if(token=="btime"){btime=std::min<uint64_t>(86400000,n);clock=true;}
+                    else if(token=="winc")winc=std::min<uint64_t>(3600000,n);
+                    else if(token=="binc")binc=std::min<uint64_t>(3600000,n);
+                    else movestogo=std::max<uint64_t>(1,std::min<uint64_t>(100,n));
+                }catch(...){}
             }
-            auto result=search_baseline(p,depth);
-            std::cout<<"info depth "<<depth<<" score cp "<<result.score_cp<<" nodes "<<result.nodes<<'\n';
+            if(clock&&!limits.movetime_ms){
+                uint64_t remain=p.turn==1?wtime:btime,inc=p.turn==1?winc:binc;
+                uint64_t available=remain>25?remain-25:1;
+                limits.movetime_ms=std::max<uint64_t>(1,std::min(available/3,remain/movestogo+inc/2));
+            }
+            if(!explicit_depth&&(limits.nodes||limits.movetime_ms))limits.depth=12;
+            auto result=search_deep(p,limits,prior);
+            // Preserve the stable cp prefix consumed by neural/intelligence.py.
+            std::cout<<"info depth "<<result.completed_depth<<" score cp "<<result.score_cp
+                     <<" nodes "<<result.nodes<<" time "<<result.elapsed_ms
+                     <<" nps "<<(result.nodes*1000/std::max<uint64_t>(1,result.elapsed_ms))
+                     <<" qnodes "<<result.qnodes<<" tthits "<<result.tt_hits;
+            if(!result.pv.empty()){
+                std::cout<<" pv";for(const auto& move:result.pv)std::cout<<' '<<uci(move);
+            }
+            std::cout<<'\n';
+            if(result.stopped)std::cout<<"info string search budget or safety limit reached; last completed iteration retained\n";
             std::cout<<"bestmove "<<(result.best?uci(*result.best):"0000")<<'\n';
         }
         std::cout.flush();

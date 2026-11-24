@@ -55,6 +55,8 @@ SearchResult search_baseline(const Position& p,int depth) {
         alpha=std::max(alpha,score);
     }
     out.score_cp=best;
+    out.completed_depth=depth;
+    if(out.best)out.pv.push_back(*out.best);
     return out;
 }
 }
