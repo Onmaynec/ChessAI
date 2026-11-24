@@ -28,7 +28,7 @@ set "AUDIT_PICK=%ERRORLEVEL%"
 if not "%AUDIT_PICK%"=="1" if not "%AUDIT_PICK%"=="2" goto :fail
 set "AUDIT_ARG="
 if "%AUDIT_PICK%"=="1" set "AUDIT_ARG=--skip-audit"
-set "OUT=benchmark_reports\v092_%RANDOM%_%RANDOM%"
+set "OUT=benchmark_reports\v0932_%RANDOM%_%RANDOM%"
 "%CHESSAI_PYTHON%" -m benchmark.run --run "%RUN%" --engine "%ENGINE%" --output "%OUT%" --profile "%PROFILE%" %AUDIT_ARG%
 if errorlevel 1 goto :fail
 echo Saved: %OUT%\report.md

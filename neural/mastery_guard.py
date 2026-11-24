@@ -14,7 +14,7 @@ def paired_scores(games,source,candidate):
         groups.setdefault(g['opening'],[]).append(g)
     scores=[]
     for rows in groups.values():
-        if len(rows)!=2 or {g['white'] for g in rows}!={source,candidate}:continue
+        if len(rows)!=2 or {g['white'] for g in rows}!={source,candidate} or rows[0].get('start_fen')!=rows[1].get('start_fen'):continue
         if any(g['result'] not in ('1-0','0-1','1/2-1/2') or g.get('fallback_moves',0) for g in rows):continue
         scores.append(sum(.5 if g['result']=='1/2-1/2' else float((g['result']=='1-0')==(g['white']==candidate)) for g in rows)/2)
     return scores
@@ -61,7 +61,9 @@ def run_guard(report_path,source,candidate_path,source_path,out):
     expected=report.get('checkpoints',{})
     if expected.get(source)!=hash_file(source_path) or expected.get('experimental_candidate.pt')!=hash_file(candidate_path):
         raise ValueError('Checkpoint hashes do not match benchmark')
-    games=[json.loads(l) for l in report_path.with_name('games.jsonl').read_text(encoding='utf-8').splitlines()]
+    game_path=report_path.with_name('games.jsonl')
+    if report.get('games_sha256')!=hash_file(game_path):raise ValueError('Game journal hash mismatch')
+    games=[json.loads(l) for l in game_path.read_text(encoding='utf-8').splitlines()]
     result=examine(report,games,source);result['report_sha256']=hash_file(report_path)
     atomic_json(out,result);print(result,flush=True);return result
 

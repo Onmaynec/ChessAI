@@ -118,7 +118,7 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
                 idx=list(range(start,min(start+batch,len(rows[split]))))
                 x,mask,_,negative,values=batch_data(split,idx)
                 logits,pred=network(x)
-                if not torch.isfinite(logits).all():raise RuntimeError('Nonfinite logits')
+                if not torch.isfinite(logits).all() or not torch.isfinite(pred).all():raise RuntimeError('Nonfinite network output')
                 probs=logits.masked_fill(~mask,-1e9).softmax(1)
                 neg_mass=(probs*negative).sum(1).cpu().tolist()
                 errors=(pred-values).square().cpu().tolist()

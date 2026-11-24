@@ -93,8 +93,69 @@ def eligible_candidate(current,baseline):
             and current['value_mse']<=baseline['value_mse']+.02+1e-9
             and current['target_nll']<=baseline['target_nll']+1e-9)
 
+def motif_proposal(rng,category):
+    """Geometry-biased proposals; only teacher/bridge can accept them."""
+    from .tactics import KNIGHTS, DIRS
+    def step(s,dx,dy,n=1):
+        f=s%8+dx*n;r=s//8+dy*n
+        return r*8+f if 0<=f<8 and 0<=r<8 else None
+    b=['.']*64
+    if category=='fork':
+        dest=rng.randrange(64)
+        neighbors=[t for dx,dy in KNIGHTS if (t:=step(dest,dx,dy)) is not None]
+        if len(neighbors)<3:return None
+        src,bk,victim=rng.sample(neighbors,3)
+        b[src]='N';b[bk]='k';b[victim]=rng.choice('rq')
+        if rng.random()<.5:
+            free=[i for i,p in enumerate(b) if p=='.' and i!=dest]
+            b[rng.choice(free)]=rng.choice('BRbn')
+    elif category in ('pin','pin_capture','discovered_attack'):
+        anchor=rng.randrange(64);dx,dy=rng.choice(DIRS)
+        ray=[t for n in range(1,8) if (t:=step(anchor,dx,dy,n)) is not None]
+        if len(ray)<3:return None
+        i,j=sorted(rng.sample(range(len(ray)),2))
+        between,target=ray[i],ray[j]
+        slider='B' if dx and dy else 'R'
+        if category=='discovered_attack':
+            b[anchor]=slider;b[between]=rng.choice('NB');b[target]=rng.choice('rq')
+            free=[k for k,p in enumerate(b) if p=='.' and k not in ray[:j+1]]
+            if not free:return None
+            bk=rng.choice(free);b[bk]='k'
+        else:
+            b[between]=rng.choice('rq');b[target]='k';bk=target
+            if category=='pin_capture':
+                b[anchor]=slider
+            else:
+                # Move the slider from an off-ray square into the pin.
+                srcs=[k for k in range(64) if b[k]=='.' and k!=anchor and k not in ray]
+                rng.shuffle(srcs)
+                for src in srcs:
+                    b[src]=slider
+                    if anchor in attacks(b,src):break
+                    b[src]='.'
+                else:return None
+    elif category=='mate_sacrifice':
+        bk=62;b[bk]='k'
+        for s in (53,54,55):b[s]='p'
+        qfile=rng.randint(1,4);rfile=rng.randrange(qfile)
+        qr=rng.randint(1,5);rr=rng.randrange(qr)
+        b[qr*8+qfile]='Q';b[rr*8+qfile]='R';b[56+rfile]='r'
+        if rng.random()<.5:
+            free=[i for i,p in enumerate(b) if p=='.' and i%8!=qfile and i//8!=7]
+            b[rng.choice(free)]=rng.choice('BNbn')
+    else:return None
+    free=[i for i,p in enumerate(b) if p=='.' and max(abs(i%8-bk%8),abs(i//8-bk//8))>1]
+    if not free:return None
+    wk=rng.choice(free);b[wk]='K'
+    if any(p!='.' and p.isupper() and bk in attacks(b,i) for i,p in enumerate(b)):return None
+    row={'fen':fen_from_board(b),'legal':[],'accepted':[]}
+    return transform_row(row,flip=bool(rng.randrange(2)),mirror=bool(rng.randrange(2)))['fen']
+
 def targeted_fen(rng,category):
     """Biased synthetic proposals, not pre-labelled chess puzzles."""
+    if category in ('fork','pin','pin_capture','discovered_attack','mate_sacrifice') and rng.random()<.65:
+        proposal=motif_proposal(rng,category)
+        if proposal:return proposal
     b=['.']*64
     wk,bk=rng.sample(range(64),2)
     if max(abs(wk%8-bk%8),abs(wk//8-bk//8))<=1:return None

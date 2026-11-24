@@ -225,6 +225,7 @@ def main(argv=None):
         from neural.tactics import repetition_stats
         game_log=out/'games.jsonl'
         report['repetition_diagnostics']=repetition_stats(json.loads(line) for line in game_log.read_text(encoding='utf-8').splitlines()) if game_log.is_file() else repetition_stats([])
+        report['games_sha256']=digest(game_log) if game_log.is_file() else None
         report['status']='complete'
     except BaseException as exc:
         report['status']='interrupted' if isinstance(exc,KeyboardInterrupt) else 'failed'
