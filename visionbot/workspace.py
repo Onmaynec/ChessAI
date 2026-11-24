@@ -76,6 +76,7 @@ class Workspace:
         self._fen=''
         self._messages=deque(maxlen=600)
         self._filter='all'
+        self.filter_var=tk.StringVar(value='all')
         self._labels=[]
         self._locked=[]
         self._choices=[]
@@ -111,8 +112,10 @@ class Workspace:
         bar=self.card(self.full)
         bar.grid(row=0,column=0,columnspan=2,sticky='ew',padx=10,pady=(10,5))
         self.label(bar,'Chess AI · Vision Bot','Chess AI · Vision Bot',size=17,bold=True).pack(side='left',padx=12,pady=9)
-        self.label(bar,variable=self.state_text,color=GREEN).pack(side='left',padx=6)
-        self.button(bar,'Оверлей','Overlay',self.toggle_overlay,width=84).pack(side='right',padx=8,pady=6)
+        self.button(bar,'Оверлей','Overlay',self.toggle_overlay,width=76).pack(side='right',padx=5,pady=6)
+        self.header_stop=self.button(bar,'■ Стоп','■ Stop',self.stop,width=66)
+        self.header_stop.pack(side='right',padx=3,pady=6)
+        self.label(bar,variable=self.state_text,color=GREEN,size=11).pack(side='left',padx=4)
         self.side=self.card(self.full)
         self.side.grid(row=1,column=0,sticky='ns',padx=(10,5),pady=(5,10))
         self.nav={}
@@ -209,6 +212,7 @@ class Workspace:
         b.pack(fill='x',padx=14,pady=4);self._locked.append(b)
         self.info=self.label(c,variable=self.board_text,color=MUTED,wrap=300)
         self.info.pack(anchor='w',padx=14)
+        self.label(c,variable=self.notice,color=RED,wrap=290).pack(anchor='w',padx=14,pady=2)
         self.section(c,3,'Настройки партии','Game settings')
         self.choice(c,'Сторона','Side',self.color,[('white','Белые','White'),('black','Чёрные','Black')],lock=True)
         self.choice(c,'Очередь хода при импорте','Turn on import',self.turn,[('auto','Авто','Auto'),('white','Белые','White'),('black','Чёрные','Black')],lock=True)
@@ -237,7 +241,8 @@ class Workspace:
         self.board=tk.Canvas(c,width=232,height=232,bg=PANEL,highlightthickness=0)
         self.board.pack(padx=12,pady=8)
         self.board.bind('<Configure>',lambda _:self.draw_board())
-        self.label(c,variable=self.fen_text,color=MUTED,wrap=265).pack(anchor='w',padx=14,pady=4)
+        self.fen_label=self.label(c,variable=self.fen_text,color=MUTED,wrap=265)
+        self.fen_label.pack(anchor='w',padx=14,pady=4)
         self.button(c,'Копировать FEN','Copy FEN',self.copy_fen).pack(fill='x',padx=14,pady=(2,12))
         self.toggle_preview()
 
@@ -257,8 +262,14 @@ class Workspace:
         c=self.log_card
         self.title(c,'Журнал сессии','Session log')
         row=self.row(c)
-        self.filter_choice=self.ctk.CTkOptionMenu(row,values=['all','info','analysis','move','error'],command=self.filter_log,fg_color=FIELD,button_color=BORDER,button_hover_color=ACCENT,width=100)
-        self.filter_choice.pack(side='left');self.filter_choice.set('all')
+        values=[('all','Все','All'),('info','Система','System'),('analysis','Анализ','Analysis'),('move','Ходы','Moves'),('error','Ошибки','Errors')]
+        def select(value):
+            mapping={self.tr(a,b):v for v,a,b in values}
+            self.filter_var.set(mapping[value])
+            self.filter_log(mapping[value])
+        self.filter_choice=self.ctk.CTkOptionMenu(row,values=[self.tr(a,b) for _,a,b in values],command=select,fg_color=FIELD,button_color=BORDER,button_hover_color=ACCENT,width=100)
+        self.filter_choice.pack(side='left');self.filter_choice.set(self.tr('Все','All'))
+        self._choices.append((self.filter_choice,self.filter_var,values))
         self.button(row,'Очистить вид','Clear view',self.clear_log,width=90).pack(side='right')
         self.switch(c,'Автопрокрутка','Auto-scroll',self.autoscroll)
         self.log=self.ctk.CTkTextbox(c,height=190,fg_color=FIELD,text_color=TEXT,font=('Consolas',11),wrap='word',state='disabled')
@@ -296,6 +307,7 @@ class Workspace:
         self.label(row,'Глубина','Depth',color=MUTED).pack(side='left')
         self.label(row,variable=self.depth_text).pack(side='right')
         self.label(self.overlay,variable=self.summary_text,color=MUTED,wrap=300).pack(anchor='w',padx=14)
+        self.label(self.overlay,variable=self.detail_text,color=MUTED,wrap=300,size=11).pack(anchor='w',padx=14)
         self.overlay_stop=self.button(self.overlay,'■ Остановить · Esc','■ Stop · Esc',self.stop)
         self.overlay_stop.pack(fill='x',padx=12,pady=6)
 
@@ -347,7 +359,7 @@ class Workspace:
         except OSError as exc:self.add_view_log('error',str(exc))
 
     def toggle_preview(self):
-        if self.preview.get():self.board.pack(padx=12,pady=8,before=self.vision.winfo_children()[-2])
+        if self.preview.get():self.board.pack(padx=12,pady=8,before=self.fen_label)
         else:self.board.pack_forget()
         self.draw_board()
 
@@ -391,7 +403,7 @@ class Workspace:
             self._fen=fen;self.fen_text.set('FEN: '+fen);self.draw_board()
 
     def reset_analysis(self):
-        self._last_event=None;self._fen='';self.fen_text.set('—')
+        self._last_event=None;self._fen='';self.fen_text.set('—');self.notice.set('')
         self.move_text.set('—');self.eval_text.set('—');self.depth_text.set('—');self.detail_text.set('')
         self.draw_board();self.draw_candidates([])
         self.analysis.configure(state='normal');self.analysis.delete('1.0','end');self.analysis.configure(state='disabled')
@@ -452,26 +464,53 @@ class Workspace:
             self.ev.set();self.add_view_log('error',self.tr('Окно перекрывает доску. Запрошена остановка.','Window overlaps board. Stop requested.'))
         if active:self.state_text.set(self.tr('Остановка…','Stopping…') if self.ev.is_set() else self.tr('Сессия активна','Session active'))
         else:self.state_text.set(self.tr('Остановлено','Stopped') if self.worker else self.tr('Ожидание','Idle'))
-        for w in (self.stop_button,self.overlay_stop):w.configure(state='normal' if active else 'disabled')
+        for w in (self.stop_button,self.overlay_stop,self.header_stop):w.configure(state='normal' if active else 'disabled')
+
+    def prepare_launch_layout(self):
+        """Prefer an actual non-overlapping window; shrink the full panel if needed."""
+        r=self.root;r.update_idletasks()
+        board=self.rect
+        sw,sh=r.winfo_screenwidth(),r.winfo_screenheight()
+        width,height=r.winfo_width(),r.winfo_height()
+        # Include some space for native window borders and title bar.
+        for candidate in (width, min(width,720), min(width,560),510):
+            pos=safe_position(board,candidate+16,height+42,sw,sh)
+            if pos is not None:
+                r.geometry(f'{candidate}x{height}+{pos[0]}+{pos[1]}')
+                r.update_idletasks()
+                return not self.panel_overlaps()
+        return False
 
     def toggle_overlay(self):
         r=self.root;r.update_idletasks()
         if not self.compact:
-            pos=safe_position(getattr(self.bot,'rect',None) or self.rect,344,252,r.winfo_screenwidth(),r.winfo_screenheight())
+            pos=safe_position(getattr(self.bot,'rect',None) or self.rect,360,294,r.winfo_screenwidth(),r.winfo_screenheight())
             if pos is None:
                 messagebox.showwarning('Vision Bot',self.tr('Нет свободного места рядом с доской.','No space beside the board.'));return
             self._full_geometry=r.geometry()
             self.compact=True;self.full.pack_forget();self.overlay.pack(fill='both',expand=True)
-            r.minsize(320,220);r.geometry(f'344x252+{pos[0]}+{pos[1]}')
+            r.minsize(320,250);r.geometry(f'344x278+{pos[0]}+{pos[1]}')
             r.attributes('-alpha',clamp_alpha(self.opacity.get()));r.attributes('-topmost',True)
         else:
+            geometry=self._full_geometry or '560x650'
             if self.worker and self.worker.is_alive():
-                # Expanding across the calibrated board would compromise capture.
-                # Stop first; this does not start another session.
-                self.stop()
+                match=re.match(r'(\d+)x(\d+)',geometry)
+                width,height=(map(int,match.groups()) if match else (560,650))
+                rect=getattr(self.bot,'rect',None) or self.rect
+                sw,sh=r.winfo_screenwidth(),r.winfo_screenheight()
+                result=None
+                for candidate in (width,min(width,720),min(width,560),510):
+                    pos=safe_position(rect,candidate+16,height+42,sw,sh)
+                    if pos is not None:
+                        result=f'{candidate}x{height}+{pos[0]}+{pos[1]}'
+                        break
+                if result is None:
+                    messagebox.showwarning('Vision Bot',self.tr('Для развёрнутой панели нет места. Остановите сессию перед раскрытием.','No space for the full panel. Stop the session before expanding.'))
+                    return
+                geometry=result
             self.compact=False;self.overlay.pack_forget();self.full.pack(fill='both',expand=True)
             r.attributes('-alpha',1.);r.minsize(510,520)
-            if self._full_geometry:r.geometry(self._full_geometry)
+            r.geometry(geometry)
             self.set_topmost();self.layout()
         self.save_workspace_settings()
 

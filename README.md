@@ -2,20 +2,26 @@
 
 # Chess AI 🧠
 
-[![Version](https://img.shields.io/badge/version-0.7.0-24e1d6)](.service/version.txt)
-[![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows)](docs/COMPATIBILITY.md)
+[![Version](https://img.shields.io/badge/version-0.8.2-7154e8)](VERSION)
+[![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows)](docs/README.md)
 [![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python)](requirements.txt)
 [![PyTorch](https://img.shields.io/badge/PyTorch-CUDA%20%7C%20CPU-EE4C2C?logo=pytorch)](requirements.txt)
 [![C++](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus)](docs/ARCHITECTURE.md)
 
 **Локальная шахматная исследовательская система: C++20 Chess Core, собственная policy/value сеть на PyTorch, PPO self-play и Training Studio.**
 
-[Архитектура](docs/ARCHITECTURE.md) · [Обновление](docs/UPGRADE_TO_0.7.md) · [Сборка](docs/RELEASES.md) · [Требования](docs/COMPATIBILITY.md)
+[Архитектура](docs/ARCHITECTURE.md) · [Обновление](docs/LOCAL_UPDATE.md) · [Сборка](docs/README.md) · [Требования](docs/COMPATIBILITY.md)
 
 </div>
 
 > [!IMPORTANT]
 > Обновление версии само по себе не делает модель сильнее. Силу проверяйте через **Holdout Evaluation**, а не по loss или загрузке GPU. Веса и кодировщик позиций (`planes19_actions73_v1`) совместимы с v0.6.0.
+
+## Vision Studio 0.8.2
+
+Новая оболочка Vision Bot на CustomTkinter. Полная панель и компактный перемещаемый оверлей используют одну сессию. Язык RU/EN, прозрачность, предпросмотр и фильтры журнала. Установите CustomTkinter в существующий Python и запустите START_CHESS_VISION_BOT.bat. [Руководство](docs/guides/VISION_STUDIO.md).
+
+Ниже — историческое описание 0.7.0.
 
 ## Что нового в 0.7.0 — Дисковое архивирование 🗜️
 
@@ -72,7 +78,7 @@ PPO, весовые checkpoint и схема наград **не изменен�
 > [!WARNING]
 > Не запускайте старую и новую Training Studio одновременно. Убедитесь, что предыдущий `python -m neural.selfplay` действительно остановлен. Не удаляйте старый проект до проверки новой версии и резервной копии.
 
-Подробно: [docs/UPGRADE_TO_0.7.md](docs/UPGRADE_TO_0.7.md).
+Подробно: [историческая инструкция 0.7.0](docs/archive/UPGRADE_TO_0.7.md).
 
 ## Быстрый старт 🪟
 

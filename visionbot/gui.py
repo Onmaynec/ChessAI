@@ -193,9 +193,7 @@ class App(Workspace):
             messagebox.showerror('Chess.com browser',str(exc))
             return
         # Validate window placement before starting optional local training.
-        self.place_away_from_board()
-        self.root.update_idletasks()
-        if self.panel_overlaps():
+        if not self.prepare_launch_layout():
             messagebox.showwarning('Vision Bot','Move the window outside the calibrated board.')
             return
         self.ev.clear()
@@ -211,7 +209,6 @@ class App(Workspace):
         chosen_phantom=bool(self.phantom.get()) if hasattr(self,'phantom') else False
         chosen_resume=(self.resume.get() if hasattr(self,'resume') else True)
         chosen_turn={'auto':None,'white':'w','black':'b'}[(self.turn.get() if hasattr(self,'turn') else 'auto')]
-        self.place_away_from_board()
         # Topmost controls must not cover a square: the screenshot recognizer
         # would otherwise see the panel instead of the chessboard.
         if hasattr(self.root,'winfo_rootx'):
@@ -264,7 +261,13 @@ class App(Workspace):
     def close(self):
         self.stop()
         self.save_workspace_settings()
-        self.root.destroy()
+        self._wait_close()
+
+    def _wait_close(self):
+        if self.worker and self.worker.is_alive():
+            self.root.after(100,self._wait_close)
+        else:
+            self.root.destroy()
 
 
 def main():
