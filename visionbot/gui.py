@@ -57,7 +57,7 @@ class App(Workspace):
         self._closing=False
         self._hotkey_previous=(False,False)
         self.root.after(100,self.pump)
-        if sys.platform=='win32':self.root.after(65,self.poll_shortcuts)
+        if sys.platform=='win32':self.root.after(40,self.poll_shortcuts)
 
     def on_agent_change(self,event=None):
         name=self.checkpoint.get()
@@ -198,7 +198,7 @@ class App(Workspace):
                 if self.root.state() in ('normal','zoomed') and (our_panel_is_foreground() or computer) and not self.root.grab_current():
                     self.launch(attach_any_position=action==2)
         finally:
-            if not self._closing:self.root.after(65,self.poll_shortcuts)
+            if not self._closing:self.root.after(40,self.poll_shortcuts)
 
     def launch(self, attach_any_position: bool = False):
         if getattr(self,'_launching',False) or getattr(self,'_closing',False):return
@@ -206,7 +206,7 @@ class App(Workspace):
         try:self._launch(attach_any_position)
         finally:
             self._launching=False
-            if not self._closing:self.refresh_workspace()
+            if not getattr(self,'_closing',False):self.refresh_workspace()
 
     def _launch(self, attach_any_position: bool = False):
         if self.worker and self.worker.is_alive():return

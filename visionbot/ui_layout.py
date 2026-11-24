@@ -27,10 +27,12 @@ class StableStringVar(tk.StringVar):
 
 class ScrollViewport(tk.Frame):
     """One native canvas; schedule region updates only when geometry changes."""
-    def __init__(self, parent, background):
+    def __init__(self, parent, background, scrollbar_class=None):
         super().__init__(parent, bg=background, bd=0, highlightthickness=0)
         self.canvas = tk.Canvas(self, bg=background, bd=0, highlightthickness=0)
-        self.scrollbar = tk.Scrollbar(self, orient='vertical', command=self.canvas.yview)
+        self.scrollbar = (scrollbar_class(self, orientation='vertical', command=self.canvas.yview, width=10,
+                                          fg_color=background, button_color='#353746', button_hover_color='#55586b')
+                          if scrollbar_class else tk.Scrollbar(self, orient='vertical', command=self.canvas.yview))
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
         self.canvas.pack(side='left', fill='both', expand=True)
         self.body = tk.Frame(self.canvas, bg=background, bd=0, highlightthickness=0)

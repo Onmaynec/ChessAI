@@ -15,6 +15,7 @@ from tkinter import messagebox
 
 from .telemetry import rectangles_overlap
 from .ui_layout import ScrollViewport, StableStringVar, layout_mode
+from .ui_icons import icon_image
 from neural.agent_profiles import ALIASES
 
 BG='#101116'
@@ -119,9 +120,10 @@ class Workspace:
         self.alpha_text=StableStringVar(value=f'{round(self.opacity.get()*100)}%')
         r.title('Chess AI · Vision Computer Bot Lab — Vision Studio 0.8.4')
         r.configure(fg_color=BG)
-        sw,sh=r.winfo_screenwidth(),r.winfo_screenheight()
-        r.geometry(f'{min(1360,max(540,sw-90))}x{min(850,max(550,sh-90))}')
-        r.minsize(510,520)
+        scale=self.window_scale()
+        sw,sh=round(r.winfo_screenwidth()/scale),round(r.winfo_screenheight()/scale)
+        r.geometry(f'{min(1360,max(420,sw-70))}x{min(850,max(440,sh-90))}')
+        r.minsize(420,440)
         r.attributes('-topmost',bool(self.topmost.get()))
         self.full=ctk.CTkFrame(r,fg_color=BG,corner_radius=0)
         self.full.pack(fill='both',expand=True)
@@ -140,14 +142,17 @@ class Workspace:
         for i,(var,color) in enumerate(((self.state_text,GREEN),(self.model_status,TEXT),(self.side_status,TEXT),(self.region_status,MUTED))):
             self.statusbar.grid_columnconfigure(i,weight=1)
             cell=self.label(self.statusbar,variable=var,color=color,size=12,bold=i==0)
+            if i>0:cell.configure(image=icon_image(ctk,('home','model','side','vision')[i],size=16),compound='left')
             cell.grid(row=0,column=i,sticky='w',padx=10,pady=8)
             self.status_cells.append(cell)
         self.side=self.card(self.full)
         self.side.grid(row=1,column=0,rowspan=4,sticky='ns',padx=(10,8),pady=(4,10))
         self.nav={}
-        for key,ru,en in [('home','⌂  Сессия','⌂  Session'),('vision','◎  Видение','◎  Vision'),('analysis','▥  Анализ','▥  Analysis'),('log','▤  Журнал','▤  Log'),('settings','⚙  Настройки','⚙  Settings')]:
+        self.nav_names={'home':('Сессия','Session'),'vision':('Видение','Vision'),'analysis':('Анализ','Analysis'),
+                        'log':('Журнал','Log'),'settings':('Настройки','Settings')}
+        for key,(ru,en) in self.nav_names.items():
             b=self.button(self.side,ru,en,lambda k=key:self.navigate(k),width=125)
-            b.configure(anchor='w',height=42,fg_color='transparent',border_width=0)
+            b.configure(image=icon_image(ctk,key),compound='left',anchor='w',height=44,fg_color='transparent',border_width=0)
             b.pack(fill='x',padx=7,pady=3)
             self.nav[key]=b
         system=self.card(self.side)
@@ -157,7 +162,7 @@ class Workspace:
         for var in (self.engine_status,self.checkpoint_status,self.vision_status):
             self.label(system,variable=var,color=MUTED,size=11,wrap=112).pack(anchor='w',padx=8,pady=2)
         self.label(system,'Компьютерный бот','Computer bot only',color=MUTED,size=10,wrap=112).pack(anchor='w',padx=8,pady=(3,7))
-        self.viewport=ScrollViewport(self.full,BG)
+        self.viewport=ScrollViewport(self.full,BG,ctk.CTkScrollbar)
         self.viewport.grid(row=2,column=1,sticky='nsew',padx=(0,10),pady=(0,4))
         self.body=self.viewport.body
         self.session=self.card(self.body)
@@ -256,7 +261,13 @@ class Workspace:
         self.title(c,'Новая сессия','New session','Подготовка, подключение к партии и запуск','Setup, connect to a game and launch')
         self.section(c,1,'Выбор модели','Choose model')
         row=self.row(c)
-        self.agent_picker=self.choice(row,'','',self.checkpoint,[(n,n,n) for n in ALIASES],change=self.on_agent_change)
+        picker=self.ctk.CTkFrame(row,fg_color='transparent')
+        picker.pack(side='left',fill='x',expand=True)
+        self.agent_picker=self.choice(picker,'','',self.checkpoint,[(n,n,n) for n in ALIASES],change=self.on_agent_change)
+        self.model_hint=self.ctk.CTkFrame(row,fg_color=FIELD,corner_radius=7)
+        self.label(self.model_hint,'Выбранная модель','Selected model',size=10,color=MUTED).pack(anchor='w',padx=8,pady=(2,0))
+        self.model_hint_text=StableStringVar(value='')
+        self.label(self.model_hint,variable=self.model_hint_text,size=11).pack(anchor='w',padx=8,pady=(0,2))
         self.section(c,2,'Область доски','Board region')
         row=self.row(c)
         b=self.button(row,'▣  Выделить область','▣  Select region',self.calibrate,width=150)
@@ -457,13 +468,13 @@ class Workspace:
         self.viewport.grid()
         # Compact navigation rail saves working space at side-by-side widths.
         for key_name,button in self.nav.items():
-            names={'home':('⌂','⌂  Сессия','⌂  Session'),'vision':('◎','◎  Видение','◎  Vision'),
-                   'analysis':('▥','▥  Анализ','▥  Analysis'),'log':('▤','▤  Журнал','▤  Log'),
-                   'settings':('⚙','⚙  Настройки','⚙  Settings')}
-            icon,ru,en=names[key_name]
-            button.configure(text=self.tr(ru,en) if wide else icon,width=126 if wide else 42,anchor='w' if wide else 'center')
-        if wide:self.system_card.pack(side='bottom',fill='x',padx=7,pady=8)
-        else:self.system_card.pack_forget()
+            ru,en=self.nav_names[key_name]
+            button.configure(text=self.tr(ru,en) if wide else '',width=126 if wide else 42,anchor='w' if wide else 'center')
+        if wide:
+            self.system_card.pack(side='bottom',fill='x',padx=7,pady=8)
+            self.model_hint.pack(side='right',padx=(4,3))
+        else:
+            self.system_card.pack_forget();self.model_hint.pack_forget()
         self.option_cells[0].master.grid_columnconfigure(2,weight=1 if wide else 0,uniform='opts' if wide else '')
         for i,cell in enumerate(self.option_cells):
             cell.grid(row=0 if wide else i//2,column=i if wide else i%2,columnspan=1 if wide or i<2 else 2)
@@ -505,10 +516,10 @@ class Workspace:
             self.log_filters.pack_forget();self.log.pack_forget()
 
     def toggle_log(self):
-        self.log_collapsed.set(not self.log_collapsed.get())
-        if self._layout_mode and self._layout_mode[1] and not self.log_collapsed.get():
-            self.set_log_visibility(True)
-        else:self.layout(force=True)
+        visible=bool(self.log.winfo_manager())
+        self.log_collapsed.set(visible)
+        self.set_log_visibility(not visible)
+        self._layout_key=(self.page,self._layout_mode,self.log_collapsed.get())
         self.save_workspace_settings()
 
     def on_resize(self,event):
@@ -699,9 +710,9 @@ class Workspace:
         if active!=self._active:
             self._active=active
             for w in self._locked+[self.start,self.attach]:w.configure(state='disabled' if active else 'normal')
-        self.model_status.set('▱  '+self.checkpoint.get())
-        self.side_status.set('♙  '+(self.tr('Белые','White') if self.color.get()=='white' else self.tr('Чёрные','Black')))
-        self.region_status.set('◎  '+(f'{self.rect[2]} × {self.rect[2]}' if self.rect else self.tr('Нет области','No region')))
+        self.model_status.set(self.tr('Модель: ','Model: ')+self.checkpoint.get())
+        self.side_status.set(self.tr('Сторона: ','Side: ')+(self.tr('Белые','White') if self.color.get()=='white' else self.tr('Чёрные','Black')))
+        self.region_status.set(self.tr('Доска: ','Board: ')+(f'{self.rect[2]} × {self.rect[2]}' if self.rect else '—'))
         import time
         now=time.monotonic()
         signature=(self.checkpoint.get(),bool(self.rect),self.lang.get())
@@ -711,6 +722,7 @@ class Workspace:
             self._model_exists=(self.run/'checkpoints'/self.checkpoint.get()).is_file()
             self.engine_status.set(('● ' if self._engine_exists else '○ ')+self.tr('Движок','Engine'))
             self.checkpoint_status.set(('● ' if self._model_exists else '○ ')+self.tr('Модель','Model'))
+            self.model_hint_text.set(self.tr('Файл найден','File available') if self._model_exists else self.tr('Файл отсутствует','File missing'))
             self.vision_status.set(('● ' if self.rect else '○ ')+self.tr('Область','Region'))
         if self.rect:
             x,y,s=self.rect;self.board_text.set(f'x={x}  y={y}  {s} × {s} px')
@@ -737,7 +749,8 @@ class Workspace:
         width=round(r.winfo_width()/scale)
         height=round(r.winfo_height()/scale)
         sw,sh=r.winfo_screenwidth(),r.winfo_screenheight()
-        sizes=(width,) if self.compact else (width,min(width,720),min(width,560),510)
+        if not self.panel_overlaps() and r.winfo_rootx()>=0 and r.winfo_rooty()>=0 and r.winfo_rootx()+r.winfo_width()<=sw and r.winfo_rooty()+r.winfo_height()<=sh:return True
+        sizes=(width,) if self.compact else (width,min(width,720),min(width,560),420)
         for candidate in sizes:
             pos=safe_position(self.rect,round(candidate*scale)+16,round(height*scale)+42,sw,sh)
             if pos is not None:
@@ -767,7 +780,7 @@ class Workspace:
                 match=re.match(r'(\d+)x(\d+)',geometry)
                 width,height=(map(int,match.groups()) if match else (560,650))
                 result=None
-                for candidate in (width,min(width,720),min(width,560),510):
+                for candidate in (width,min(width,720),min(width,560),420):
                     pos=safe_position(rect,round(candidate*scale)+16,round(height*scale)+42,sw,sh)
                     if pos is not None:
                         result=f'{candidate}x{height}+{pos[0]}+{pos[1]}'
@@ -777,7 +790,7 @@ class Workspace:
                     return
                 geometry=result
             self.compact=False;self.overlay.pack_forget();self.full.pack(fill='both',expand=True)
-            r.attributes('-alpha',1.);r.minsize(510,520)
+            r.attributes('-alpha',1.);r.minsize(420,440)
             r.geometry(geometry)
             self.set_topmost()
             self._layout_key=None
