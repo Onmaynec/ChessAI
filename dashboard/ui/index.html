@@ -23,7 +23,7 @@
       <div class="system-caption">ВЫЧИСЛИТЕЛЬНЫЙ МОДУЛЬ</div>
       <div class="engine-indicator"><span id="engine-led" class="led"></span><span id="engine-text">Проверка C++ ядра…</span></div>
       <div class="side-note">Нейросеть обучается локально.<br>Без внешних AI API.</div>
-      <span class="side-version">BUILD 0.9.3.2 · LOCAL ONLY</span>
+      <span class="side-version">BUILD 0.9.3.3 · LOCAL ONLY</span>
     </div>
   </aside>
   <div class="workspace">
@@ -110,7 +110,7 @@
       </section>
       <section class="screen hidden" id="screen-guide"><div class="page-heading"><div><div class="eyebrow">О СИСТЕМЕ / МЕТОДИКА</div><h1>Как читать результаты<span class="title-dot">.</span></h1><p class="lead">Что действительно измеряет система и как выбирать длительность обучения.</p></div></div><div class="guide-grid"><article class="panel guide-card"><div class="section-eyebrow">01 / ОБУЧЕНИЕ</div><h2>Реальное self-play</h2><p>Нейросеть играет сама против себя. Правила, рокировки, шахи, маты и ничьи определяет C++ ядро. Во время партии сеть выбирает действие только из допустимых ходов.</p></article><article class="panel guide-card"><div class="section-eyebrow">02 / ОБНОВЛЕНИЯ ВЕСОВ</div><h2>On-policy PPO</h2><p>После завершения партий известный исход превращается в награду −1, 0 или +1 для каждого игрока. PPO обновляет стратегию, Value MSE обучает прогнозировать исход. Незавершённые игры исключаются из обновления.</p></article><article class="panel guide-card"><div class="section-eyebrow">03 / ИНТЕРПРЕТАЦИЯ</div><h2>Loss ≠ сила игры</h2><p>Policy loss может быть отрицательным и не обязан монотонно снижаться. Value MSE показывает ошибку прогнозирования исходов в текущих партиях. Реальный рост силы проверяется независимыми матчами с фиксированным соперником.</p></article><article class="panel guide-card"><div class="section-eyebrow">04 / УПРАВЛЕНИЕ</div><h2>Эксперименты и чекпойнты</h2><p>Нажмите «Новое обучение», выберите пресет и запустите. Статистика автоматически обновляется каждые 2,5 секунды. «Остановить» завершит текущую итерацию и сохранит checkpoint; остановленный запуск можно продолжить.</p></article></div><section class="panel guide-notes"><h2>Сведения о текущем релизе</h2><p>Видеокарта используется только если установлен PyTorch с поддержкой CUDA. RTX 3050 ускорит часть операций, но скорость зависит от числа партий, размера модели и работы шахматного ядра. Это ранний исследовательский прототип: не обещает Elo, не играет на чужих аккаунтах и не подменяет движки шахматных сайтов.</p><p>Исходный supervised checkpoint v0.2 включён как стартовая модель. Без накопления достаточного числа завершённых партий сигнал подкрепления будет слабым. Для качественного сравнения используйте длительные тренировки и серии проверочных матчей.</p></section></section>
     </main>
-    <footer class="footer">CHESS AI · RESEARCH BUILD 0.9.3.2 <span>Показатели формируются исключительно из локальных файлов обучения.</span></footer>
+    <footer class="footer">CHESS AI · RESEARCH BUILD 0.9.3.3 <span>Показатели формируются исключительно из локальных файлов обучения.</span></footer>
   </div>
 </div>
 

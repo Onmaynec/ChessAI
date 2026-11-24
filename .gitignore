@@ -48,3 +48,5 @@ BOT_LAB_INSTALL_ROOT.txt
 /benchmark_reports/
 
 /tactical_experiments/
+
+/benchmark/suite_v4.json

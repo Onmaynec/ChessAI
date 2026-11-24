@@ -153,3 +153,7 @@ Windows `.bat` и CUDA на физической RTX 3050 в тестовом к
 ### Tactical Mastery 0.9.3.2
 
 Teacher score targets, curriculum, value/negative learning, legal symmetries, bounded retention replay, LR/anti-repetition labs and V3 promotion screening. `START_TACTICAL_TRAINER.bat`.
+
+### Tactical Optimization 0.9.3.3
+
+Optimization/Batch/Replay/Capacity labs, loss and gradient diagnostics, frozen local V4 builder, canonical audit cache and clean-set guard. Start `START_TACTICAL_TRAINER.bat` option 5.

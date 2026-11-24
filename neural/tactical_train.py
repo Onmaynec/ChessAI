@@ -181,7 +181,7 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
         weights=[hard_weight(m,counts[r['category']],mean_size) for r,m in zip(rows['train'],individual)]
         model.train()
         for layer in model.modules():
-            if isinstance(layer,torch.nn.BatchNorm2d):layer.eval()
+            if isinstance(layer,torch.nn.BatchNorm2d) and (optimization is None or optimization['capacity']=='same'):layer.eval()
         indices=curriculum_indices(rows['train'],epoch) if mastery else list(range(len(weights)))
         rng=random.Random(seed*1000003+epoch);rng.shuffle(indices)
         split='augmented' if mastery and epoch%2==0 else 'train'

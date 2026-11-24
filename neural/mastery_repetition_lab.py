@@ -45,30 +45,31 @@ def run(source,engine,out,pairs=8,cap=240,seed=9322026,device='auto'):
     dev=torch.device('cuda' if device=='auto' and torch.cuda.is_available() else 'cpu' if device=='auto' else device)
     model=load_model(source,dev)
     if hash_file(source)!=h:raise ValueError('Checkpoint changed')
-    games=[]
+    games=[];controls=[]
     with ChessBridge(engine) as bridge:
         starts=make_starts(bridge,pairs,seed,[])
         for start in starts:
-            for white in ('plain','guarded'):
+            for white in ('plain','guarded','control'):
                 state=bridge.new(932050,start['fen']);history=[state['fen']];moves=[];changed=0
                 for _ in range(cap):
                     if state['finished']:break
-                    actor=white if state['fen'].split()[1]=='w' else ('plain' if white=='guarded' else 'guarded')
+                    actor='plain' if white=='control' else white if state['fen'].split()[1]=='w' else ('plain' if white=='guarded' else 'guarded')
                     m,c=choose_local(model,state,bridge,engine,history,actor=='guarded')
                     changed+=c;state=bridge.step(932050,m);moves.append(m);history.append(state['fen'])
                 bridge.drop(932050)
-                g={'a':'plain','b':'guarded','opening':start['id'],'white':white,'mode':'policy','fallback_moves':0,
+                g={'a':'plain','b':'guarded','opening':start['id'],'start_fen':start['fen'],'white':white,'mode':'policy','fallback_moves':0,
                    'result':state['result'] if state['finished'] else '*','reason':state['reason'] if state['finished'] else 'max_plies_unfinished',
                    'moves':moves,'interventions':changed}
-                games.append(g)
-                with (out/'games.jsonl').open('a',encoding='utf-8') as f:f.write(json.dumps(g)+'\n')
+                (controls if white=='control' else games).append(g)
+                with (out/('control_games.jsonl' if white=='control' else 'games.jsonl')).open('a',encoding='utf-8') as f:f.write(json.dumps(g)+'\n')
                 print('[REPETITION]',start['id'],white,g['reason'],changed,flush=True)
     if hash_file(source)!=h or hash_file(engine)!=eh:raise RuntimeError('Inputs changed during lab')
     scores=paired_scores(games,'plain','guarded')
-    atomic_json(out/'report.json',{'schema':'repetition_lab_v1','source_sha256':h,'engine_sha256':eh,
+    atomic_json(out/'report.json',{'schema':'repetition_lab_v2','source_sha256':h,'engine_sha256':eh,
         'pairs':pairs,'completed_pairs':len(scores),'guarded_score':sum(scores)/len(scores) if scores else None,
         'ci95':confidence(scores),'interventions':sum(g['interventions'] for g in games),
-        'repetition_diagnostics':repetition_stats(games),
+        'repetition_diagnostics':repetition_stats(games),'plain_control':repetition_stats(controls),
+        'comparison_note':'Control uses one deterministic plain/plain game per start; treatment two color-swapped games. Compare fractions, not raw counts.',
         'warning':'Local experimental policy only, no changes to rewards or production play. Shallow cp safeguard is not a guarantee.'})
 
 def main():

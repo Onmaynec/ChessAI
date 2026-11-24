@@ -81,7 +81,14 @@ def build(engine,out,exclude,count=500,depth=4,seed=9339127,attempts=100000):
         # Exclusive creation: never overwrite a frozen library, even across concurrent builders.
         raw=json.dumps(payload,ensure_ascii=False,indent=2).encode('utf-8')
         tmp=out/'suite_v4.json';tmp.write_bytes(raw)
-        with target_path.open('xb') as f:f.write(raw)
+        import os
+        # Hard-link a complete, fsynced temporary file on the same volume; fails if destination exists.
+        import tempfile
+        fd,staging=tempfile.mkstemp(prefix='.holdout_',suffix='.tmp',dir=target_path.parent)
+        try:
+            with os.fdopen(fd,'wb') as f:f.write(raw);f.flush();os.fsync(f.fileno())
+            os.link(staging,target_path)
+        finally:Path(staging).unlink(missing_ok=True)
         print('[HOLDOUT] Frozen',target_path,hash_file(target_path),flush=True)
 
 def main():

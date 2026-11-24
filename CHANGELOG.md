@@ -1,5 +1,12 @@
 # Chess AI Changelog
 
+## v0.9.3.3 — Tactical Optimization
+
+- Opt-in policy/value optimization, warmup, minimum epochs, negative marginal loss and sampled gradient diagnostics.
+- Resumable Batch, Replay and Capacity labs; frozen local V4 holdout builder, canonical audit cache, clean-set promotion guard.
+- Local repetition control and unfinished-game diagnostics; existing PPO and checkpoint formats preserved.
+
+
 ## v0.9.3.2 — Tactical Mastery
 
 - Targeted quota generation with all-legal teacher scores, soft policy/value objectives and negative examples.
