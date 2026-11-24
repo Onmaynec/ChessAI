@@ -9,7 +9,7 @@ call "scripts\SELECT_PYTHON.bat"
 if not defined CHESSAI_PYTHON goto :no_py
 if not exist "%CHESSAI_PYTHON%" goto :no_py
 echo [INFO] Python: %CHESSAI_PYTHON%
-"%CHESSAI_PYTHON%" -c "import cv2,mss,pyautogui,PIL,torch;from visionbot.recognizer import VisionRecognizer"
+"%CHESSAI_PYTHON%" -c "import cv2,mss,pyautogui,PIL,torch,customtkinter;from visionbot.recognizer import VisionRecognizer"
 if errorlevel 1 goto :deps
 if not exist "runs\run_20261123_072154_6a110b\checkpoints\latest.pt" goto :ckpt
 if not exist "build\Release\chessai.exe" if not exist "build\chessai.exe" goto :core
@@ -23,6 +23,7 @@ echo [FIX] Set up .venv-cuda in v0.7.0 and save interpreter to config\python_pat
 goto :err
 :deps
 echo [ERROR] Missing Vision Bot dependencies.
+echo [FIX] Install missing UI and vision packages into the existing environment:
 echo [FIX] Run: "%CHESSAI_PYTHON%" -m pip install -r requirements-vision.txt
 goto :err
 :ckpt

@@ -496,6 +496,7 @@ class VisionAutoplay:
                     # an unrelated application, and keep all click guards.
                     if focus_browser_from_panel(self.browser_window):
                         self.report('Фокус возвращён браузеру после просмотра панели анализа')
+                    self._check_stop()
                     click_move(move,self.rect,self.color,screen,expected_hwnd=self.expected_hwnd,report=self.report)
                     self.report(f'Клик выполнен: {move}; проверяю изображение доски')
                     replies = self._preview_opponent_replies(sess, move)

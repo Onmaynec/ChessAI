@@ -12,6 +12,7 @@
 ## Руководства
 
 - [Bot Lab](guides/BOT_LAB.md)
+- [Vision Studio (новый интерфейс)](guides/VISION_STUDIO.md)
 - [Vision Bot](guides/VISION_BOT.md)
 - [Тактический поиск](guides/INTELLIGENCE.md)
 - [SkillBoost II](guides/SKILLBOOST_V2.md)
