@@ -95,6 +95,8 @@ def main(argv=None):
     p.add_argument('--engine',type=Path,required=True)
     p.add_argument('--output',type=Path,required=True,help='New report directory outside runs/models/config')
     p.add_argument('--agents',nargs='+')
+    p.add_argument('--candidate',type=Path,help='Optional separate experimental checkpoint')
+    p.add_argument('--suite',choices=['v1','v2'],default='v2')
     p.add_argument('--profile',choices=['quick','standard','full'],default='standard')
     p.add_argument('--pairs',type=int,default=None)
     p.add_argument('--max-plies',type=int,default=240)
@@ -113,7 +115,7 @@ def main(argv=None):
     device=torch.device('cuda' if a.device=='auto' and torch.cuda.is_available() else 'cpu' if a.device=='auto' else a.device)
     if device.type=='cuda' and not torch.cuda.is_available():p.error('CUDA unavailable')
     torch.set_num_threads(min(6,max(1,torch.get_num_threads())))
-    payload,suite_hash=load_suite();cases=payload['cases']
+    payload,suite_hash=load_suite(Path(__file__).with_name('suite_'+a.suite+'.json'));cases=payload['cases']
     with ChessBridge(a.engine) as bridge:
         expected={}
         for case in cases:
@@ -121,6 +123,9 @@ def main(argv=None):
             print('Validated:',case['id'],expected[case['id']],flush=True)
         if a.validate_suite:return
     paths,missing=discover(a.run,a.agents)
+    if a.candidate:
+        if not a.candidate.is_file():p.error('Candidate not found')
+        paths['experimental_candidate.pt']=a.candidate
     if not paths:p.error('No supported checkpoints found in run/checkpoints')
     # Separate namespace; never write into training directories or existing reports.
     out=a.output.resolve()
@@ -217,6 +222,9 @@ def main(argv=None):
         if digest(a.engine)!=report['engine_sha256']:raise RuntimeError('Engine changed during benchmark')
         if any(digest(path)!=hashes[n] for n,path in paths.items()):
             raise RuntimeError('Checkpoint changed during benchmark; results invalid. Stop training and rerun.')
+        from neural.tactics import repetition_stats
+        game_log=out/'games.jsonl'
+        report['repetition_diagnostics']=repetition_stats(json.loads(line) for line in game_log.read_text(encoding='utf-8').splitlines()) if game_log.is_file() else repetition_stats([])
         report['status']='complete'
     except BaseException as exc:
         report['status']='interrupted' if isinstance(exc,KeyboardInterrupt) else 'failed'
@@ -238,6 +246,7 @@ def main(argv=None):
         for name,r in sorted(tour['rating']['agents'].items(),key=lambda x:x[1]['rating'] if x[1]['rating'] is not None else -1,reverse=True):
             lines.append(f"| {name} | {r['rating']} | {r['ci95']} | {r['colors']['white']['score']} | {r['colors']['black']['score']} | {r['overall']['completed']}/{r['overall']['played']} |")
         lines.extend(['',tour['rating']['caveat'],''])
+    lines.extend(['## Repetition diagnostics','',str(report['repetition_diagnostics']),''])
     lines.extend(['## Integrity','',f"Missing agents: {', '.join(missing) or 'none'}",f"Overlap audit: {audit}",'Original checkpoint hashes unchanged.'])
     (out/'report.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
     print('Saved:',out,flush=True)

@@ -141,3 +141,7 @@ Windows `.bat` и CUDA на физической RTX 3050 в тестовом к
 ---
 
 **Chess AI 0.7.0** · Encoder: **planes19_actions73_v1** · Совместимость с 0.6.0
+
+## Tactical Intelligence 0.9.3
+
+`START_TACTICAL_TRAINER.bat` — локальный эксперимент генерации задач и тактического дообучения. [Методика](docs/guides/TACTICAL_INTELLIGENCE.md). Не заменяет исходные веса.

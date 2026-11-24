@@ -46,3 +46,5 @@ BOT_LAB_INSTALL_ROOT.txt
 
 # Local intelligence benchmark reports
 /benchmark_reports/
+
+/tactical_experiments/

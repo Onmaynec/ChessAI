@@ -1,5 +1,13 @@
 # Chess AI Changelog
 
+## v0.9.3 — Tactical Intelligence
+
+- Локальные геометрические тактические признаки и генерация отдельных teacher-labelled задач с исключением известных benchmark-позиций.
+- Экспериментальное supervised-дообучение с отдельным candidate.pt и отчётом validation, без замены checkpoint/PPO.
+- Benchmark V2 (26 задач), корректные альтернативы связки, экспериментальный checkpoint и диагностика повторений.
+- C++ и кодировка сохранены; сила нового checkpoint требует независимого сравнения.
+
+
 ## v0.9.2 — Deep Search Engine
 
 - Новый C++ UCI поиск: iterative deepening, PVS, Zobrist/TT с контекстом повторений, killer/history, ограниченная quiescence.
