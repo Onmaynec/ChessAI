@@ -43,3 +43,6 @@ __pycache__/
 *.zip
 preview.html
 BOT_LAB_INSTALL_ROOT.txt
+
+# Local intelligence benchmark reports
+/benchmark_reports/

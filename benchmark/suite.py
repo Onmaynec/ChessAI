@@ -71,6 +71,6 @@ def audit_experience(run,cases):
         count+=1
         case=targets.get(signature(fen))
         if case:hits.add(case)
-    return {'records_checked':count,'overlapping_ids':sorted(hits),
+    return {'status':'scanned' if count else 'no readable experience','records_checked':count,'overlapping_ids':sorted(hits),
             'sources':[str(p) for p in sources if p.is_file()],
             'scope':'selected run experience only; no proof of historical non-contamination'}

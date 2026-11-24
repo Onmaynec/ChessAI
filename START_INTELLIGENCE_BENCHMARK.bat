@@ -1,0 +1,31 @@
+@echo off
+setlocal EnableExtensions DisableDelayedExpansion
+chcp 65001 >nul
+cd /d "%~dp0"
+call scripts\SELECT_PYTHON.bat
+if not defined CHESSAI_PYTHON goto :fail
+set "ENGINE=build\Release\chessai.exe"
+if not exist "%ENGINE%" set "ENGINE=build\chessai.exe"
+if not exist "%ENGINE%" (echo Build the C++ engine first. & goto :fail)
+set "RUN=runs\run_20261123_072154_6a110b"
+set /p "RUN=Run path (Enter for default): "
+if not exist "%RUN%\checkpoints" (echo Checkpoint directory missing. & goto :fail)
+echo Stop training and other GPU workloads before benchmarking.
+echo 1. Quick: both position modes, 2 opening pairs, policy tournament
+echo 2. Standard: both position modes, 6 opening pairs, policy tournament
+echo 3. Full: both position modes and tournaments, 8 opening pairs ^(expensive^)
+choice /C 123 /N /M "Select profile: "
+set "PICK=%ERRORLEVEL%"
+set "PROFILE=quick"
+if "%PICK%"=="2" set "PROFILE=standard"
+if "%PICK%"=="3" set "PROFILE=full"
+set "OUT=benchmark_reports\v091_%RANDOM%_%RANDOM%"
+"%CHESSAI_PYTHON%" -m benchmark.run --run "%RUN%" --engine "%ENGINE%" --output "%OUT%" --profile "%PROFILE%"
+if errorlevel 1 goto :fail
+echo Saved: %OUT%\report.md
+pause
+exit /b 0
+:fail
+echo Benchmark did not complete. No training weights were updated.
+pause
+exit /b 1

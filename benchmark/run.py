@@ -101,7 +101,7 @@ def main(argv=None):
     p.add_argument('--depth',type=int,default=2)
     p.add_argument('--device',choices=['auto','cpu','cuda'],default='auto')
     p.add_argument('--seed',type=int,default=9102026)
-    p.add_argument('--audit',action='store_true',help='Scan selected run experience for exact suite overlaps')
+    p.add_argument('--skip-audit',action='store_true',help='Skip selected run overlap scan (report is explicitly unaudited)')
     p.add_argument('--validate-suite',action='store_true',help='Validate library only; no checkpoint loading')
     a=p.parse_args(argv)
     if not a.engine.is_file():p.error('Build C++ engine first')
@@ -128,13 +128,13 @@ def main(argv=None):
         p.error('Report directory must be outside training/config directories')
     out.mkdir(parents=True,exist_ok=False)
     hashes={n:digest(path) for n,path in paths.items()}
-    audit=audit_experience(a.run,cases) if a.audit else {'status':'not requested','overlapping_ids':[]}
+    audit=audit_experience(a.run,cases) if not a.skip_audit else {'status':'not requested','overlapping_ids':[]}
     excluded=set(audit['overlapping_ids'])
     report={'schema':'intelligence_benchmark_v1','status':'running','created_at':datetime.now(timezone.utc).isoformat(),
             'suite':payload['version'],'suite_sha256':suite_hash,'engine_sha256':digest(a.engine),
             'checkpoints':hashes,'missing':missing,'audit':audit,'profile':a.profile,'pairs':pairs,
             'max_plies':a.max_plies,'depth':a.depth,'seed':a.seed,'device':str(device),
-            'torch':torch.__version__,'platform':platform.platform(),'agents':{},'tournaments':{}}
+            'torch':str(torch.__version__),'platform':platform.platform(),'gpu':torch.cuda.get_device_name(device) if device.type=='cuda' else None,'agents':{},'tournaments':{}}
     write_json(out/'report.json',report)
     models={}
     try:
@@ -143,6 +143,7 @@ def main(argv=None):
         for n,path in paths.items():
             print('Testing',n,flush=True)
             model=load_model(path,device)
+            if digest(path)!=hashes[n]:raise RuntimeError('Checkpoint changed while loading: '+n)
             results={}
             with ChessBridge(a.engine) as bridge:
                 # Warm-up outside measured runs.
@@ -165,12 +166,16 @@ def main(argv=None):
                                      'actual_depth':detail.get('search_depth'), 'top3':detail.get('top3')})
                     cats=category_report(rows)
                     results[mode]={'cases':rows,'categories':cats,'timing':timing(latency),
+                                   'white_categories':category_report([r for r in rows if r.get('side')=='w']),
+                                   'black_categories':category_report([r for r in rows if r.get('side')=='b']),
+                                   'top3_correct':sum(any(m in r.get('accepted',[]) for m in (r.get('top3') or [])) for r in rows if r['status']=='scored') if mode=='policy' else None,
                                    'fallbacks':sum(r['status']=='fallback' for r in rows),
                                    'peak_allocated_mib':torch.cuda.max_memory_allocated(device)/1048576 if device.type=='cuda' else None,
                                    'peak_reserved_mib':torch.cuda.max_memory_reserved(device)/1048576 if device.type=='cuda' else None,
-                                   'strengths':sorted(cats,key=lambda k:-cats[k]['accuracy'])[:3],
-                                   'weaknesses':sorted(cats,key=lambda k:cats[k]['accuracy'])[:3]}
+                                   'strengths':[k for k in sorted(cats,key=lambda k:-cats[k]['accuracy']) if cats[k]['accuracy']>=.75][:3],
+                                   'weaknesses':[k for k in sorted(cats,key=lambda k:cats[k]['accuracy']) if cats[k]['accuracy']<.75][:3]}
             report['agents'][n]=results
+            report.setdefault('model_configs',{})[n]={'config':model.config,'parameters':sum(p.numel() for p in model.parameters())}
             models[n]=model.cpu()
             write_json(out/'report.json',report)
         with ChessBridge(a.engine) as bridge:
@@ -197,6 +202,7 @@ def main(argv=None):
                 report['tournaments'][mode]={'rating':rating_report(list(models),rated,seed=a.seed),
                                               'games':len(records),'excluded_fallback_pairs':len(invalid)}
                 write_json(out/'report.json',report)
+        if digest(a.engine)!=report['engine_sha256']:raise RuntimeError('Engine changed during benchmark')
         if any(digest(path)!=hashes[n] for n,path in paths.items()):
             raise RuntimeError('Checkpoint changed during benchmark; results invalid. Stop training and rerun.')
         report['status']='complete'
