@@ -6,6 +6,8 @@ import hashlib
 import json
 from pathlib import Path
 import random
+import os
+from .tactical_learning import atomic_json, experiment_lock, stratify
 from .tactics import board, canonical, describe, attacks, color, name, enemy
 
 def hash_file(path):
@@ -14,14 +16,14 @@ def hash_file(path):
         for block in iter(lambda:f.read(1024*1024),b''):h.update(block)
     return h.hexdigest()
 
-def output_dir(path):
+def output_dir(path,resume=False):
     p=path.resolve()
     if any(x.lower() in ('runs','models','config','checkpoints','.venv','.venv-cuda') for x in p.parts):
         raise ValueError('Use a new experiment directory outside training data')
-    p.mkdir(parents=True,exist_ok=False)
+    p.mkdir(parents=True,exist_ok=resume)
     return p
 
-def sparse_fen(rng):
+def sparse_fen(rng,extra=False):
     """Random legal-looking KQK, KRK or KPK; bridge supplies final legality."""
     b=['.']*64
     k,e,p=rng.sample(range(64),3)
@@ -29,7 +31,10 @@ def sparse_fen(rng):
     piece=rng.choice(('Q','Q','R','P'))
     if piece=='P' and p//8 not in (5,6):return None
     b[k]='K';b[e]='k';b[p]=piece
-    if e in attacks(b,p):return None
+    if extra:
+        for sq in rng.sample([i for i,x in enumerate(b) if x=='.'],rng.randint(2,5)):
+            b[sq]=rng.choice('NBRQnbrq')
+    if any(x!='.' and x.isupper() and e in attacks(b,i) for i,x in enumerate(b)):return None
     if rng.randrange(2):
         b=[x.swapcase() for x in b[::-1]];turn='b'
     else:turn='w'
@@ -90,74 +95,132 @@ def label(bridge,engine,state,depth):
             else:return None
     return accepted,category,best,tags
 
-def generate(engine,out,count,depth,seed,attempts):
+def generate(engine,out,count,depth,seed,attempts,validation_count=None,resume=False):
     from neural.selfplay import ChessBridge
     from neural.agent import START_FEN
     from neural.intelligence import SearchUnavailable
     from benchmark.suite import load_suite
+    validation_count=validation_count if validation_count is not None else max(2,round(count/6))
     suite_dir=Path(__file__).resolve().parents[1]/'benchmark'
-    forbidden=set()
+    forbidden=set();suite_hashes={}
     for path in sorted(suite_dir.glob('suite_v*.json')):
-        payload,_=load_suite(path)
+        payload,sha=load_suite(path)
+        suite_hashes[path.name]=sha
         forbidden.update(canonical(c['fen']) for c in payload['cases'])
     if not forbidden:raise ValueError('Benchmark exclusion set missing')
-    engine_hash=hash_file(engine)
-    rng=random.Random(seed);seen=set(forbidden);counts=Counter();splits=Counter();failures=0
-    cap=max(6,count//5)
-    target={'train':max(1,int(count*.8)),'validation':count-max(1,int(count*.8))}
-    with (out/'dataset.jsonl').open('x',encoding='utf-8') as f,ChessBridge(engine) as bridge:
-        for i in range(attempts):
-            if i%25==0:print(f'[DATA] attempt {i}/{attempts}, accepted {sum(splits.values())}/{count}',flush=True)
-            if all(splits[k]>=v for k,v in target.items()):break
-            split='validation' if i%5==0 else 'train'
-            if splits[split]>=target[split]:continue
-            # Each example has its own independently generated trajectory.
-            if i%2==0:
-                fen=sparse_fen(rng)
-                if not fen:continue
-                try:state=bridge.new(930001,fen)
-                except RuntimeError:continue
-            else:
-                state=bridge.new(930001,START_FEN)
-                for _ in range(rng.randint(12,65)):
-                    if state['finished']:break
-                    b=board(state['fen'])
-                    from .tactics import square
-                    legal=state['legal_moves']
-                    weights=[4 if b[square(m[2:4])]!='.' else 1 for m in legal]
-                    state=bridge.step(930001,rng.choices(legal,weights=weights)[0])
-            if state['finished']:continue
-            key=canonical(state['fen'])
-            if key in seen:continue
-            seen.add(key)
-            try:result=label(bridge,engine,state,depth)
-            except SearchUnavailable:
-                failures+=1
-                if failures>=10:raise RuntimeError('Ten teacher failures; verify engine version and depth')
-                continue
-            if not result:continue
-            moves,category,cp,tags=result
-            if counts[category]>=cap:continue
-            row={'fen':state['fen'],'accepted':moves,'legal':state['legal_moves'],'category':category,
-                 'split':split,'teacher_cp':cp,'evidence':tags,'source':f'generated:{seed}:{i}'}
-            f.write(json.dumps(row)+'\n');f.flush()
-            counts[category]+=1;splits[split]+=1
-            print(f'[DATA] {sum(splits.values())}/{count} {split} {category} (attempt {i+1}/{attempts})',flush=True)
-    if hash_file(engine)!=engine_hash:raise RuntimeError('Engine changed during generation')
-    meta={'schema':'tactical_data_v1','seed':seed,'depth':depth,'engine_sha256':engine_hash,
-          'counts':dict(counts),'splits':dict(splits),'teacher_failures':failures,'excluded_signatures':len(forbidden),
-          'complete':all(splits[k]>=v for k,v in target.items()),'dataset_sha256':hash_file(out/'dataset.jsonl')}
-    (out/'dataset_meta.json').write_text(json.dumps(meta,indent=2),encoding='utf-8')
-    print(meta,flush=True)
-    if min(splits['train'],splits['validation'])<2:raise RuntimeError('Insufficient dataset; increase attempts')
+    config={'schema':'tactical_data_v2','seed':seed,'depth':depth,'count':count,
+            'validation_count':validation_count,'engine_sha256':hash_file(engine),'suite_hashes':suite_hashes}
+    with experiment_lock(out):
+        return generate_locked(engine,out,config,attempts,forbidden,resume)
+
+def generate_locked(engine,out,config,attempts,forbidden,resume):
+    from neural.selfplay import ChessBridge
+    from neural.agent import START_FEN
+    from neural.intelligence import SearchUnavailable
+    count=config['count'];depth=config['depth'];seed=config['seed']
+    journal=out/'generation_state.json';pool=out/'pool.jsonl'
+    if journal.exists():
+        if not resume:raise ValueError('Experiment exists; use --resume')
+        state=json.loads(journal.read_text(encoding='utf-8'))
+        if state['config']!=config:raise ValueError('Resume configuration, engine or benchmark changed')
+    else:
+        if pool.exists():raise ValueError('Missing generation state')
+        state={'config':config,'next_attempt':0,'teacher_failures':0}
+        atomic_json(journal,state)
+    rows=[];seen=set(forbidden);counts=Counter();sources=set()
+    if pool.exists():
+        # Only a torn final record may be removed after a process/power failure.
+        with pool.open('r+b') as f:
+            while True:
+                pos=f.tell();line=f.readline()
+                if not line:break
+                if not line.endswith(b'\n'):
+                    f.seek(pos);f.truncate();break
+                row=json.loads(line);key=canonical(row['fen'])
+                if key in seen or row['source'] in sources:raise ValueError('Pool duplicate or benchmark overlap')
+                seen.add(key);sources.add(row['source']);rows.append(row);counts[row['category']]+=1
+    cursor=max(state['next_attempt'],max((int(r['source'].split(':')[-1])+1 for r in rows),default=0))
+    failures=state['teacher_failures'];consecutive=0
+    cap=max(6,count//4)
+    print(f'[DATA] Resume cursor {cursor}; {len(rows)}/{count} positions; depth {depth}',flush=True)
+    if len(rows)<count:
+        with pool.open('ab') as f,ChessBridge(engine) as bridge:
+            try:
+                for i in range(cursor,attempts):
+                    if len(rows)>=count:break
+                    cursor=i
+                    if i%25==0:
+                        atomic_json(journal,{'config':config,'next_attempt':i,'teacher_failures':failures})
+                        print(f'[DATA] attempt {i}/{attempts} | {len(rows)}/{count} | {dict(counts)}',flush=True)
+                    # Per-attempt seed makes replays independent of interruption.
+                    rng=random.Random(seed*1000003+i)
+                    if i%3!=1:
+                        fen=sparse_fen(rng,extra=i%3==2)
+                        if not fen:cursor=i+1;continue
+                        try:position=bridge.new(930001,fen)
+                        except RuntimeError:
+                            if bridge.proc.poll() is not None:raise
+                            cursor=i+1;continue
+                    else:
+                        position=bridge.new(930001,START_FEN)
+                        for _ in range(rng.randint(10,75)):
+                            if position['finished']:break
+                            b=board(position['fen'])
+                            from .tactics import square
+                            moves=position['legal_moves']
+                            weights=[4 if b[square(m[2:4])]!='.' else 1 for m in moves]
+                            position=bridge.step(930001,rng.choices(moves,weights=weights)[0])
+                    if position['finished']:cursor=i+1;continue
+                    key=canonical(position['fen'])
+                    if key in seen:cursor=i+1;continue
+                    try:
+                        # Cheap screening, then independently recompute all legal scores at target depth.
+                        result=label(bridge,engine,position,min(2,depth))
+                        if result and depth>2 and result[1]!='mate1':
+                            result=label(bridge,engine,position,depth)
+                        consecutive=0
+                    except SearchUnavailable:
+                        failures+=1;consecutive+=1;cursor=i+1
+                        if consecutive>=10:raise RuntimeError('Ten consecutive teacher failures; reduce depth or inspect engine')
+                        continue
+                    if not result:cursor=i+1;continue
+                    moves,category,cp,tags=result
+                    if counts[category]>=cap:cursor=i+1;continue
+                    row={'fen':position['fen'],'accepted':moves,'legal':position['legal_moves'],
+                         'category':category,'teacher_cp':cp,'evidence':tags,'source':f'generated:{seed}:{i}'}
+                    f.write((json.dumps(row)+'\n').encode('utf-8'));f.flush();os.fsync(f.fileno())
+                    rows.append(row);seen.add(key);counts[category]+=1;cursor=i+1
+                    if len(rows)%10==0 or len(rows)==count:
+                        print(f'[DATA] {len(rows)}/{count} {category} | attempt {cursor}',flush=True)
+            finally:
+                atomic_json(journal,{'config':config,'next_attempt':cursor,'teacher_failures':failures})
+    if hash_file(engine)!=config['engine_sha256']:raise RuntimeError('Engine changed during generation')
+    if len(rows)!=count:
+        print(f'[DATA] Incomplete pool {len(rows)}/{count}; rerun --resume with larger --attempts.',flush=True)
+        raise RuntimeError('Requested dataset not complete; journal preserved')
+    split_rows=stratify(rows,config['validation_count'],seed)
+    path=out/'dataset.jsonl';tmp=path.with_suffix('.tmp')
+    with tmp.open('w',encoding='utf-8',newline='\n') as f:
+        for r in split_rows:f.write(json.dumps(r)+'\n')
+        f.flush();os.fsync(f.fileno())
+    os.replace(tmp,path)
+    distribution={s:dict(Counter(r['category'] for r in split_rows if r['split']==s)) for s in ('train','validation')}
+    meta={**config,'counts':dict(counts),'splits':dict(Counter(r['split'] for r in split_rows)),
+          'category_splits':distribution,'missing_validation_categories':sorted(set(counts)-set(distribution['validation'])),
+          'teacher_failures':failures,'excluded_signatures':len(forbidden),'complete':True,
+          'dataset_sha256':hash_file(path)}
+    atomic_json(out/'dataset_meta.json',meta)
+    print('[DATA] Complete:',meta,flush=True)
 
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--engine',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
-    p.add_argument('--count',type=int,default=160);p.add_argument('--depth',type=int,default=2)
-    p.add_argument('--seed',type=int,default=9302026);p.add_argument('--attempts',type=int,default=2400)
+    p.add_argument('--count',type=int,default=600);p.add_argument('--validation-count',type=int)
+    p.add_argument('--depth',type=int,default=3);p.add_argument('--seed',type=int,default=9312026)
+    p.add_argument('--attempts',type=int,default=30000);p.add_argument('--resume',action='store_true')
     a=p.parse_args()
-    if not a.engine.is_file() or not 10<=a.count<=10000 or not 1<=a.depth<=4 or not a.count<=a.attempts<=100000:p.error('Invalid engine or budget')
-    generate(a.engine,output_dir(a.output),a.count,a.depth,a.seed,a.attempts)
+    val=a.validation_count if a.validation_count is not None else max(2,round(a.count/6))
+    if not a.engine.is_file() or not 10<=a.count<=20000 or not 2<=a.depth<=5 or not a.count<=a.attempts<=2000000 or not 2<=val<=a.count-2:p.error('Invalid engine or budget')
+    generate(a.engine,output_dir(a.output,a.resume),a.count,a.depth,a.seed,a.attempts,val,a.resume)
 
 if __name__=='__main__':main()
