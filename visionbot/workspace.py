@@ -107,6 +107,8 @@ class Workspace:
         self.checkpoint_status=tk.StringVar(value='')
         self.vision_status=tk.StringVar(value='')
         self.fen_short=tk.StringVar(value='—')
+        self.fen_turn=tk.StringVar(value='—')
+        self._system_signature=None
         self.alpha_text=tk.StringVar(value=f'{round(self.opacity.get()*100)}%')
         r.title('Chess AI · Vision Computer Bot Lab — Vision Studio 0.8.3')
         r.configure(fg_color=BG)
@@ -293,7 +295,11 @@ class Workspace:
         self.attach=self.button(c,'↪ Подключиться к текущей партии','↪ Join current game',lambda:self.launch(attach_any_position=True))
         self.attach.pack(fill='x',padx=15,pady=(2,10))
         self.warning_label=self.label(c,variable=self.notice,color=RED,wrap=300,size=11)
-        self.warning_label.pack(anchor='w',padx=14,pady=(0,5))
+        self.notice.trace_add('write',lambda *_:self.show_notice())
+
+    def show_notice(self):
+        if self.notice.get():self.warning_label.pack(anchor='w',padx=14,pady=(0,5))
+        else:self.warning_label.pack_forget()
 
     def build_vision(self):
         c=self.vision
@@ -313,7 +319,7 @@ class Workspace:
         self.recognition.pack(anchor='w',pady=(1,5))
         self.label(info,'Оценка · cp','Evaluation · cp',color=MUTED,size=11).pack(anchor='w')
         self.label(info,variable=self.eval_text,size=20,bold=True).pack(anchor='w')
-        self.label(info,'Сторона хода','Side to move',color=MUTED,size=10).pack(anchor='w')
+        self.label(info,variable=self.fen_turn,color=MUTED,size=10).pack(anchor='w')
         self.button(info,'Копировать FEN','Copy FEN',self.copy_fen,width=100).pack(anchor='w',pady=(5,1))
         self.fen_label=self.label(c,variable=self.fen_text,color=MUTED,wrap=280,size=10)
         self.fen_label.pack(anchor='w',padx=14,pady=(0,8))
@@ -333,6 +339,7 @@ class Workspace:
         self.candidates.pack(fill='x',padx=14,pady=(3,7))
         self.detail_label=self.label(c,variable=self.detail_text,color=MUTED,wrap=280,size=11)
         self.detail_label.pack(anchor='w',padx=14,pady=(0,5))
+        self.label(c,'Полосы: policy · оценки от стороны хода','Bars: policy · scores from side to move',color=MUTED,size=10,wrap=280).pack(anchor='w',padx=14,pady=(0,6))
         self.analysis=self.ctk.CTkTextbox(c,height=180,fg_color=FIELD,text_color=TEXT,font=('Consolas',12),wrap='word',state='disabled')
         self.draw_candidates([])
 
@@ -376,23 +383,31 @@ class Workspace:
         ctk=self.ctk
         self.overlay=ctk.CTkFrame(self.root,fg_color=BG,corner_radius=0)
         header=self.row(self.overlay)
-        grip=self.label(header,'⋮⋮  Vision Bot','⋮⋮  Vision Bot',bold=True,size=15)
+        grip=self.label(header,'⋮⋮  Vision Bot','⋮⋮  Vision Bot',bold=True,size=16)
         grip.pack(side='left')
         grip.bind('<ButtonPress-1>',self.drag_start)
         grip.bind('<B1-Motion>',self.drag_move)
-        self.button(header,'Развернуть','Expand',self.toggle_overlay,width=80).pack(side='right')
-        self.label(self.overlay,variable=self.state_text,color=GREEN,size=13,bold=True).pack(anchor='w',padx=14)
-        self.label(self.overlay,'Только компьютерный бот','Computer bot only',color=MUTED).pack(anchor='w',padx=14)
-        row=self.row(self.overlay)
-        self.label(row,variable=self.move_text,bold=True,size=23).pack(side='left')
-        self.label(row,variable=self.eval_text,bold=True,size=19).pack(side='right')
-        row=self.row(self.overlay)
-        self.label(row,'Глубина','Depth',color=MUTED).pack(side='left')
+        self.button(header,'↗ Развернуть','↗ Expand',self.toggle_overlay,width=92).pack(side='right')
+        card=self.card(self.overlay)
+        card.pack(fill='x',padx=10,pady=3)
+        row=self.row(card)
+        self.label(row,variable=self.state_text,color=GREEN,size=12,bold=True).pack(side='left')
+        self.label(row,variable=self.summary_text,color=MUTED,size=10).pack(side='right')
+        row=self.row(card)
+        for i,(ru,en,var) in enumerate([('Выбранный ход','Chosen move',self.move_text),('Оценка · cp','Evaluation · cp',self.eval_text)]):
+            row.grid_columnconfigure(i,weight=1,uniform='overlay')
+            metric=ctk.CTkFrame(row,fg_color=FIELD,corner_radius=7)
+            metric.grid(row=0,column=i,sticky='ew',padx=3)
+            self.label(metric,ru,en,color=MUTED,size=10).pack(anchor='w',padx=8,pady=(3,0))
+            self.label(metric,variable=var,bold=True,size=21).pack(anchor='w',padx=8,pady=(0,4))
+        row=self.row(card)
+        self.label(row,'Глубина','Depth',color=MUTED,size=11).pack(side='left')
         self.label(row,variable=self.depth_text).pack(side='right')
-        self.label(self.overlay,variable=self.summary_text,color=MUTED,wrap=300).pack(anchor='w',padx=14)
-        self.label(self.overlay,variable=self.detail_text,color=MUTED,wrap=300,size=11).pack(anchor='w',padx=14)
+        self.label(card,variable=self.detail_text,color=MUTED,wrap=290,size=10).pack(anchor='w',padx=12,pady=(0,4))
         self.overlay_stop=self.button(self.overlay,'■ Остановить · Esc','■ Stop · Esc',self.stop)
-        self.overlay_stop.pack(fill='x',padx=12,pady=6)
+        self.overlay_stop.configure(fg_color='#482631',hover_color='#703544',border_color='#73424c',text_color='#ffd9df')
+        self.overlay_stop.pack(fill='x',padx=10,pady=(3,1))
+        self.label(self.overlay,'Только компьютерный бот','Computer bot only',color=MUTED,size=10).pack(anchor='center')
 
     def navigate(self,key):
         self.page=key
@@ -457,7 +472,8 @@ class Workspace:
             widget.set(next((k for k,v in mapping.items() if v==var.get()),str(var.get())))
         self.draw_candidates((self._last_event or {}).get('details',{}).get('candidates',[]))
         self.fen_short.set(self.tr('Из телеметрии','Reported FEN') if self._fen else '—')
-        self.draw_board()
+        if self._fen:self.set_fen(self._fen)
+        else:self.draw_board()
         self.refresh_workspace()
         self.save_workspace_settings()
 
@@ -511,7 +527,9 @@ class Workspace:
         if not candidates:
             self.ctk.CTkLabel(self.candidates,text=self.tr('Ожидание данных анализа','Waiting for analysis'),text_color=MUTED,font=('Segoe UI',11)).pack(padx=8,pady=7)
             return
-        for c in candidates[:4]:
+        entries=[c for c in candidates if isinstance(c,dict)]
+        entries.sort(key=lambda c:c.get('move')!=selected)
+        for c in entries[:4]:
             if not isinstance(c,dict):continue
             cp=c.get('cp');policy=c.get('policy');move=c.get('move')
             chosen=move==selected
@@ -527,10 +545,14 @@ class Workspace:
 
     def set_fen(self,fen):
         if parse_board(fen):
-            self._fen=fen;self.fen_text.set('FEN: '+fen);self.fen_short.set(self.tr('Из телеметрии','Reported FEN'));self.draw_board()
+            self._fen=fen
+            self.fen_text.set('FEN: '+(fen[:42]+'…' if len(fen)>42 else fen))
+            self.fen_short.set(self.tr('Из телеметрии','Reported FEN'))
+            self.fen_turn.set(self.tr('Ход белых','White to move') if fen.split()[1:2]==['w'] else self.tr('Ход чёрных','Black to move'))
+            self.draw_board()
 
     def reset_analysis(self):
-        self._last_event=None;self._fen='';self.fen_text.set('—');self.fen_short.set('—');self.notice.set('')
+        self._last_event=None;self._fen='';self.fen_text.set('—');self.fen_short.set('—');self.fen_turn.set('—');self.notice.set('')
         self.move_text.set('—');self.eval_text.set('—');self.depth_text.set('—');self.detail_text.set('')
         self.draw_board();self.draw_candidates([])
         self.analysis.configure(state='normal');self.analysis.delete('1.0','end');self.analysis.configure(state='disabled')
@@ -586,9 +608,16 @@ class Workspace:
         self.model_status.set('▱  '+self.checkpoint.get())
         self.side_status.set('♙  '+(self.tr('Белые','White') if self.color.get()=='white' else self.tr('Чёрные','Black')))
         self.region_status.set('◎  '+(f'{self.rect[2]} × {self.rect[2]}' if self.rect else self.tr('Нет области','No region')))
-        self.engine_status.set(('● ' if self.engine.is_file() else '○ ')+self.tr('Движок','Engine'))
-        self.checkpoint_status.set(('● ' if (self.run/'checkpoints'/self.checkpoint.get()).is_file() else '○ ')+self.tr('Модель','Model'))
-        self.vision_status.set(('● ' if self.rect else '○ ')+self.tr('Область','Region'))
+        import time
+        now=time.monotonic()
+        signature=(self.checkpoint.get(),bool(self.rect),self.lang.get())
+        if signature!=self._system_signature or now-getattr(self,'_system_checked',0)>1:
+            self._system_signature=signature;self._system_checked=now
+            self._engine_exists=self.engine.is_file()
+            self._model_exists=(self.run/'checkpoints'/self.checkpoint.get()).is_file()
+            self.engine_status.set(('● ' if self._engine_exists else '○ ')+self.tr('Движок','Engine'))
+            self.checkpoint_status.set(('● ' if self._model_exists else '○ ')+self.tr('Модель','Model'))
+            self.vision_status.set(('● ' if self.rect else '○ ')+self.tr('Область','Region'))
         if self.rect:
             x,y,s=self.rect;self.board_text.set(f'x={x}  y={y}  {s} × {s} px')
         else:self.board_text.set(self.tr('Область не задана','No region selected'))
@@ -596,7 +625,10 @@ class Workspace:
         if active and self.panel_overlaps() and not self.ev.is_set():
             self.ev.set();self.add_view_log('error',self.tr('Окно перекрывает доску. Запрошена остановка.','Window overlaps board. Stop requested.'))
         if active:self.state_text.set(self.tr('Остановка…','Stopping…') if self.ev.is_set() else self.tr('Сессия активна','Session active'))
-        else:self.state_text.set(self.tr('● Остановлено','● Stopped') if self.worker else self.tr('● Ожидание','● Idle'))
+        elif self.worker:self.state_text.set(self.tr('● Остановлено','● Stopped'))
+        elif self.rect and self._engine_exists and self._model_exists and self.consent.get():
+            self.state_text.set(self.tr('● Готов к работе','● Ready'))
+        else:self.state_text.set(self.tr('○ Настройка','○ Setup'))
         if self._status_cache!=active:
             self._status_cache=active
             for w in (self.stop_button,self.overlay_stop,self.header_stop):w.configure(state='normal' if active else 'disabled')
@@ -619,12 +651,12 @@ class Workspace:
     def toggle_overlay(self):
         r=self.root;r.update_idletasks()
         if not self.compact:
-            pos=safe_position(getattr(self.bot,'rect',None) or self.rect,360,294,r.winfo_screenwidth(),r.winfo_screenheight())
+            pos=safe_position(getattr(self.bot,'rect',None) or self.rect,376,326,r.winfo_screenwidth(),r.winfo_screenheight())
             if pos is None:
                 messagebox.showwarning('Vision Bot',self.tr('Нет свободного места рядом с доской.','No space beside the board.'));return
             self._full_geometry=r.geometry()
             self.compact=True;self.full.pack_forget();self.overlay.pack(fill='both',expand=True)
-            r.minsize(320,250);r.geometry(f'344x278+{pos[0]}+{pos[1]}')
+            r.minsize(340,280);r.geometry(f'360x300+{pos[0]}+{pos[1]}')
             r.attributes('-alpha',clamp_alpha(self.opacity.get()));r.attributes('-topmost',True)
         else:
             geometry=self._full_geometry or '560x650'
