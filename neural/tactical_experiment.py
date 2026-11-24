@@ -78,6 +78,15 @@ def main():
         train(source,data/'dataset.jsonl',dest,engine,cfg['epochs'],cfg['batch'],cfg['lr'],'auto',cfg['seed'],cfg['patience'],True)
         print('Reports:',dest/'training_report.json',flush=True)
         if (dest/'candidate.pt').is_file():
-            print('Candidate is experimental. Compare using benchmark.run --candidate; do not replace latest.pt.',flush=True)
+            print('Candidate is experimental; do not replace latest.pt.',flush=True)
+            from neural.agent_profiles import ALIASES
+            if source.parent.name=='checkpoints' and source.name in ALIASES:
+                if input('Compare source and candidate now? [y/N]: ').strip().lower()=='y':
+                    from benchmark.run import main as benchmark_main
+                    if hash_file(source)!=cfg['source_sha256']:raise RuntimeError('Source changed before comparison')
+                    benchmark_main(['--run',str(source.parent.parent),'--engine',str(engine),'--agents',source.name,
+                                    '--candidate',str(dest/'candidate.pt'),'--output',str(out/('comparison_'+uuid4().hex[:6])),
+                                    '--profile','standard','--skip-audit'])
+            else:print('For a non-standard source path use benchmark.run manually.',flush=True)
 
 if __name__=='__main__':main()

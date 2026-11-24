@@ -96,9 +96,6 @@ def label(bridge,engine,state,depth):
     return accepted,category,best,tags
 
 def generate(engine,out,count,depth,seed,attempts,validation_count=None,resume=False):
-    from neural.selfplay import ChessBridge
-    from neural.agent import START_FEN
-    from neural.intelligence import SearchUnavailable
     from benchmark.suite import load_suite
     validation_count=validation_count if validation_count is not None else max(2,round(count/6))
     suite_dir=Path(__file__).resolve().parents[1]/'benchmark'

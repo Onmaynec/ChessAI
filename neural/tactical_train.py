@@ -19,7 +19,7 @@ def load_rows(path):
     for line in path.read_text(encoding='utf-8').splitlines():
         r=json.loads(line);k=canonical(r['fen'])
         if k in seen or r['source'] in sources:raise ValueError('Duplicate or benchmark overlap')
-        if not r['accepted'] or not set(r['accepted'])<=set(r['legal']):raise ValueError('Invalid targets')
+        if not r['accepted'] or len(set(r['accepted']))!=len(r['accepted']) or len(set(r['legal']))!=len(r['legal']) or not set(r['accepted'])<=set(r['legal']):raise ValueError('Invalid targets')
         seen.add(k);sources.add(r['source']);rows[r['split']].append(r)
     if min(map(len,rows.values()))<2:raise ValueError('Insufficient independent validation examples')
     return rows
