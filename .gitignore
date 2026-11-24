@@ -1,66 +1,45 @@
-build/
-.venv/
-__pycache__/
-.pytest_cache/
-*.pyc
-output/*.jsonl
-models/*.pt
-models/*/*.pt
-models/*/*.jsonl
-.idea/
-.vscode/
-*.obj
-*.o
-*.exe
-
-runs/
-preview.html
-
-# User-specific absolute interpreter path (may point into old installation)
-config/python_path.txt
-
-# Python
-__pycache__/
-*.pyc
-.pytest_cache/
-
-# Virtual environments
-.venv/
-.venv-cuda/
-venv/
-
-# Training progress and checkpoints
+# Local state and training data
 /runs/
+/output/
+/config/*
+!/config/README.md
+!/config/vision_bot.example.json
+/patch_backups/
+/migration_reports/
+/.local-upgrade-backups/
 *.pt
 *.pth
 *.ckpt
-
-# Logs and generated datasets
-*.log
 *.jsonl
 *.jsonl.gz
+*.log
 
-# Build artifacts
+# Python
+/.venv/
+/.venv-cuda/
+/venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Build / IDE
 /build/
 /dist/
 /cmake-build-*/
 *.obj
-*.pdb
+*.o
 *.exe
+*.pdb
+.vs/
+.idea/
+.vscode/
 
-# Secrets
+# Local secrets and temporary files
 .env
 .env.*
 !.env.example
-
-# Temporary files
 *.tmp
 *.bak
-
-# IDE
-.vs/
-.idea/
-
-# Release archives
 *.zip
-
+preview.html
+BOT_LAB_INSTALL_ROOT.txt
