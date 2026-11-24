@@ -2,7 +2,7 @@
 
 # Chess AI 🧠
 
-[![Version](https://img.shields.io/badge/version-0.9.1-7154e8)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.9.2-7154e8)](VERSION)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows)](docs/README.md)
 [![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python)](requirements.txt)
 [![PyTorch](https://img.shields.io/badge/PyTorch-CUDA%20%7C%20CPU-EE4C2C?logo=pytorch)](requirements.txt)
@@ -16,6 +16,10 @@
 
 > [!IMPORTANT]
 > Обновление версии само по себе не делает модель сильнее. Силу проверяйте через **Holdout Evaluation**, а не по loss или загрузке GPU. Веса и кодировщик позиций (`planes19_actions73_v1`) совместимы с v0.6.0.
+
+## Deep Search Engine 0.9.2
+
+Новый C++ UCI поиск: iterative deepening, PVS, контекстная TT, quiescence, позиционная оценка и PV. Требуется пересборка ядра. [Руководство](docs/guides/DEEP_SEARCH.md).
 
 ## Intelligence Benchmark 0.9.1
 
