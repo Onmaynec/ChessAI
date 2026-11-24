@@ -13,6 +13,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox
 from .workspace import Workspace
+from .ui_layout import shortcut_edge
 
 from .autoplay import Screen,VisionAutoplay
 from .focus import find_browser,activate_browser
@@ -52,7 +53,11 @@ class App(Workspace):
             except (OSError,ValueError,KeyError,TypeError):pass
         self.build_workspace()
         self.root.protocol('WM_DELETE_WINDOW',self.close)
+        self._launching=False
+        self._closing=False
+        self._hotkey_previous=(False,False)
         self.root.after(100,self.pump)
+        if sys.platform=='win32':self.root.after(65,self.poll_shortcuts)
 
     def on_agent_change(self,event=None):
         name=self.checkpoint.get()
@@ -80,7 +85,10 @@ class App(Workspace):
 
     def pump(self):
         import datetime
-        for _ in range(100):
+        import time
+        deadline=time.monotonic()+.008
+        for _ in range(24):
+            if time.monotonic()>deadline:break
             try: raw=self.msg.get_nowait()
             except queue.Empty: break
             try: event=read_event(raw)
@@ -175,7 +183,32 @@ class App(Workspace):
             self.root.deiconify()
             messagebox.showerror('Снимок экрана',str(e))
 
+    def poll_shortcuts(self):
+        """Read only the requested chords; no hooks, key logging or key injection."""
+        if self._closing:return
+        try:
+            key=lambda code:bool(ctypes.windll.user32.GetAsyncKeyState(code)&0x8000)
+            action,self._hotkey_previous=shortcut_edge(key(0xA4),key(0xA5),key(0x11),key(0x31),key(0x32),self._hotkey_previous)
+            if action and self.consent.get() and self.rect and not self._launching and not (self.worker and self.worker.is_alive()):
+                from .focus import current_foreground,our_panel_is_foreground
+                _,title=current_foreground()
+                title=title.casefold()
+                # Outside our own panel, require a visible computer-game title.
+                computer='chess.com' in title and any(word in title for word in ('computer','bot','компьютер','бот'))
+                if self.root.state()=='normal' and (our_panel_is_foreground() or computer) and not self.root.grab_current():
+                    self.launch(attach_any_position=action==2)
+        finally:
+            if not self._closing:self.root.after(65,self.poll_shortcuts)
+
     def launch(self, attach_any_position: bool = False):
+        if self._launching or self._closing:return
+        self._launching=True
+        try:self._launch(attach_any_position)
+        finally:
+            self._launching=False
+            if not self._closing:self.refresh_workspace()
+
+    def _launch(self, attach_any_position: bool = False):
         if self.worker and self.worker.is_alive():return
         if not self.consent.get():messagebox.showwarning('Режим','Подтверди, что играешь против компьютерного бота.');return
         if not self.rect:messagebox.showwarning('Калибровка','Сначала выдели шахматную доску.');return
@@ -236,7 +269,7 @@ class App(Workspace):
         self.reset_analysis()
         def run():
             import time
-            time.sleep(0.6)
+            if self.ev.wait(0.6):return
             bot=VisionAutoplay(self.engine,ck,self.run,chosen_color,chosen_rect,
                                self.logline,self.ev,expected_hwnd=browser.hwnd,
                                browser_window=browser,
@@ -259,6 +292,8 @@ class App(Workspace):
         self.ev.set();self.logline('Запрошена остановка…')
 
     def close(self):
+        if self._closing:return
+        self._closing=True
         self.stop()
         self.save_workspace_settings()
         self._wait_close()
