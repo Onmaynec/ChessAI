@@ -133,6 +133,7 @@ class App(Workspace):
     def calibrate(self):
         """Screen screenshot; drag from top-left to bottom-right of board."""
         if self.worker and self.worker.is_alive():return
+        self.overlays.hide_for_capture()
         self.root.withdraw()
         self.root.after(650,self._capture)
 
@@ -174,13 +175,14 @@ class App(Workspace):
                 self.path.parent.mkdir(parents=True,exist_ok=True)
                 self.path.write_text(json.dumps({'rect':self.rect,'color':self.color.get()},indent=2),encoding='utf-8')
                 self.info.configure(text=f'Доска: x={sx}, y={sy}, размер={size} px')
-                selector.destroy();self.root.deiconify();self.place_away_from_board()
+                selector.destroy();self.root.deiconify();self.overlays.restore_after_capture();self.place_away_from_board()
             canvas.bind('<ButtonPress-1>',down);canvas.bind('<B1-Motion>',drag);canvas.bind('<ButtonRelease-1>',up)
-            def close(e=None):selector.destroy();self.root.deiconify();self.place_away_from_board()
+            def close(e=None):selector.destroy();self.root.deiconify();self.overlays.restore_after_capture();self.place_away_from_board()
             selector.bind('<Escape>',close)
             selector.protocol('WM_DELETE_WINDOW',close)
         except Exception as e:
             self.root.deiconify()
+            self.overlays.restore_after_capture()
             messagebox.showerror('Снимок экрана',str(e))
 
     def poll_shortcuts(self):
@@ -296,6 +298,7 @@ class App(Workspace):
         self._closing=True
         self.stop()
         self.save_workspace_settings()
+        self.overlays.shutdown()
         self._wait_close()
 
     def _wait_close(self):

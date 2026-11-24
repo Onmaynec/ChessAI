@@ -16,6 +16,8 @@ from tkinter import messagebox
 from .telemetry import rectangles_overlap
 from .ui_layout import ScrollViewport, StableStringVar, layout_mode
 from .ui_icons import icon_image
+from .overlays import OverlayManager,NAMES
+from .analysis_view import report_sections
 from neural.agent_profiles import ALIASES
 
 BG='#101116'
@@ -118,7 +120,7 @@ class Workspace:
         self.fen_turn=StableStringVar(value='—')
         self._system_signature=None
         self.alpha_text=StableStringVar(value=f'{round(self.opacity.get()*100)}%')
-        r.title('Chess AI · Vision Computer Bot Lab — Vision Studio 0.8.4')
+        r.title('Chess AI · Vision Computer Bot Lab — Vision Studio 0.9.0')
         r.configure(fg_color=BG)
         scale=self.window_scale()
         sw,sh=round(r.winfo_screenwidth()/scale),round(r.winfo_screenheight()/scale)
@@ -132,8 +134,8 @@ class Workspace:
         bar=self.card(self.full)
         bar.grid(row=0,column=0,columnspan=2,sticky='ew',padx=10,pady=(9,4))
         self.label(bar,'♞  Chess AI · Vision Bot','♞  Chess AI · Vision Bot',size=16,bold=True).pack(side='left',padx=12,pady=5)
-        self.label(bar,'0.8.4','0.8.4',color=MUTED,size=11).pack(side='left',padx=3)
-        self.button(bar,'↗ Оверлей','↗ Overlay',self.toggle_overlay,width=88).pack(side='right',padx=6,pady=5)
+        self.label(bar,'0.9.0','0.9.0',color=MUTED,size=11).pack(side='left',padx=3)
+        self.button(bar,'↗ Оверлеи','↗ Overlays',lambda:self.navigate('settings') if not self.compact else self.toggle_overlay(),width=88).pack(side='right',padx=6,pady=5)
         self.header_stop=self.button(bar,'■ Стоп','■ Stop',self.stop,width=66)
         self.header_stop.pack(side='right',padx=3,pady=5)
         self.statusbar=self.card(self.full)
@@ -185,6 +187,7 @@ class Workspace:
         self.build_vision()
         self.build_analysis()
         self.build_log()
+        self.overlays=OverlayManager(self)
         self.build_settings()
         self.build_overlay()
         self.color.trace_add('write',self.sync_color)
@@ -359,6 +362,7 @@ class Workspace:
         self.detail_label.pack(anchor='w',padx=14,pady=(0,5))
         self.label(c,'Полосы: policy · оценки от стороны хода','Bars: policy · scores from side to move',color=MUTED,size=10,wrap=280).pack(anchor='w',padx=14,pady=(0,6))
         self.analysis=self.ctk.CTkTextbox(c,height=180,fg_color=FIELD,text_color=TEXT,font=('Consolas',12),wrap='word',state='disabled')
+        self.analysis.tag_config('heading',foreground='#b7a5ff')
         self.build_candidate_rows()
         self.draw_candidates([])
 
@@ -400,6 +404,18 @@ class Workspace:
         self.label(row,variable=self.alpha_text).pack(side='right',padx=8)
         self.label(c,'Left Alt+1 / Left Alt+2: запуск / подключение в разрешённом тесте','Left Alt+1 / Left Alt+2: start / join in a permitted test',color=MUTED,wrap=300).pack(anchor='w',padx=14,pady=(2,5))
         self.label(c,'55–100%. Оверлей остаётся видимым и не перекрывает доску.','55–100%. Overlay stays visible and must not cover the board.',color=MUTED,wrap=300).pack(anchor='w',padx=14,pady=(0,8))
+        self.section(c,'+','Рабочее пространство оверлеев','Overlay workspace')
+        for key,(ru,en,_) in NAMES.items():
+            row=self.row(c)
+            self.label(row,ru,en,bold=True).pack(side='left',padx=3)
+            self.button(row,'Открыть / закрыть','Open / close',lambda k=key:self.overlays.toggle(k),width=130).pack(side='right')
+        row=self.row(c)
+        self.button(row,'Минимум','Minimal',lambda:self.overlays.apply_preset('minimal'),width=75).pack(side='left',expand=True,padx=2)
+        self.button(row,'Анализ','Review',lambda:self.overlays.apply_preset('review'),width=75).pack(side='left',expand=True,padx=2)
+        self.button(row,'Все','All',lambda:self.overlays.apply_preset('full'),width=65).pack(side='left',expand=True,padx=2)
+        self.button(c,'Скрыть все оверлеи','Close all overlays',self.overlays.close_all).pack(fill='x',padx=14,pady=3)
+        self.button(c,'Сбросить расположение','Reset layout',self.overlays.reset).pack(fill='x',padx=14,pady=3)
+        self.button(c,'Компактный вид основной панели','Compact main panel',self.toggle_overlay).pack(fill='x',padx=14,pady=3)
         self.button(c,'Сохранить настройки','Save settings',self.save_workspace_settings).pack(fill='x',padx=14,pady=(4,12))
 
     def build_overlay(self):
@@ -546,6 +562,7 @@ class Workspace:
         else:self.draw_board()
         self.refresh_workspace()
         self.layout(force=True)
+        self.overlays.language_changed()
         self.save_workspace_settings()
 
     def change_opacity(self,value):
@@ -554,6 +571,7 @@ class Workspace:
         if self.compact:self.root.attributes('-alpha',alpha)
 
     def save_workspace_settings(self):
+        self.overlays.save()
         try:
             self._workspace_path.parent.mkdir(parents=True,exist_ok=True)
             tmp=self._workspace_path.with_suffix('.tmp')
@@ -672,7 +690,10 @@ class Workspace:
         self.detail_text.set(self.tr('Ответ: ','Reply: ')+str(d.get('expected_reply') or '—')+' · '+str(d.get('search_time_s','—'))+' s')
         self.draw_candidates(d.get('candidates') or [])
         self.analysis.configure(state='normal');self.analysis.delete('1.0','end')
-        self.analysis.insert('end','\n'.join(lines));self.analysis.configure(state='disabled')
+        for title,body in report_sections(event,self.lang.get()=='EN'):
+            self.analysis.insert('end',title+'\n','heading')
+            self.analysis.insert('end',body+'\n\n')
+        self.analysis.configure(state='disabled')
 
     def observe_message(self,t,tag):
         match=re.search(r'(?:[Ff][Ee][Nn][: ]+|Начальная позиция: |Подключено к текущей партии без истории: )([prnbqkPRNBQK1-8/]+ [wb] [KQkq-]+ [a-h1-8-]+ \d+ \d+)',t)
@@ -703,7 +724,7 @@ class Workspace:
         if not self.rect:return False
         x,y,s=(getattr(self.bot,'rect',None) or self.rect)
         r=self.root
-        return rectangles_overlap((r.winfo_rootx(),r.winfo_rooty(),r.winfo_width(),r.winfo_height()),(x,y,s,s))
+        return (r.winfo_ismapped() and rectangles_overlap((r.winfo_rootx(),r.winfo_rooty(),r.winfo_width(),r.winfo_height()),(x,y,s,s))) or self.overlays.overlaps()
 
     def refresh_workspace(self):
         active=bool(self.worker and self.worker.is_alive())
@@ -735,6 +756,7 @@ class Workspace:
         elif self.rect and self._engine_exists and self._model_exists and self.consent.get():
             self.state_text.set(self.tr('● Готов к работе','● Ready'))
         else:self.state_text.set(self.tr('○ Настройка','○ Setup'))
+        self.overlays.refresh()
         if self._status_cache!=active:
             self._status_cache=active
             for w in (self.stop_button,self.overlay_stop,self.header_stop):w.configure(state='normal' if active else 'disabled')
@@ -745,6 +767,7 @@ class Workspace:
     def prepare_launch_layout(self):
         """Use physical coordinates for board safety and logical Tk sizes."""
         r=self.root;r.update_idletasks()
+        if not self.overlays.prepare_launch():return False
         scale=self.window_scale()
         width=round(r.winfo_width()/scale)
         height=round(r.winfo_height()/scale)
