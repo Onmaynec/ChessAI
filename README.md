@@ -145,3 +145,7 @@ Windows `.bat` и CUDA на физической RTX 3050 в тестовом к
 ## Tactical Intelligence 0.9.3
 
 `START_TACTICAL_TRAINER.bat` — локальный эксперимент генерации задач и тактического дообучения. [Методика](docs/guides/TACTICAL_INTELLIGENCE.md). Не заменяет исходные веса.
+
+### Tactical Learning Overhaul 0.9.3.1
+
+Профили Pilot/Standard/Full, возобновляемая генерация и обучение, стратификация, Top-k/MRR, hard-example weighting и scheduler. `START_TACTICAL_TRAINER.bat`.

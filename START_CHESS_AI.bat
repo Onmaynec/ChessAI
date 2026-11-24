@@ -2,11 +2,11 @@
 setlocal
 chcp 65001 >nul
 cd /d "%~dp0"
-title Chess AI v0.9.3 - Training Studio
+title Chess AI v0.9.3.1 - Training Studio
 
 echo.
 echo  =========================================================
-echo     CHESS AI 0.9.3 - ONE-CLICK LOCAL TRAINING STUDIO
+echo     CHESS AI 0.9.3.1 - ONE-CLICK LOCAL TRAINING STUDIO
  echo  =========================================================
 echo.
 if not exist "build\Release\chessai.exe" if not exist "build\chessai.exe" (

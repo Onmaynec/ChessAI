@@ -1,5 +1,12 @@
 # Chess AI Changelog
 
+## v0.9.3.1 — Tactical Learning Overhaul
+
+- Возобновляемые генерация и обучение, стратифицированное разбиение, более глубокая перепроверка учителем.
+- Top-k/MRR/target mass/NLL, диагностика train/validation, hard-example weighting, scheduler и early stopping.
+- Pilot/Standard/Full (600/2400/6000 позиций), отдельные экспериментальные checkpoint, сохранение PPO и исходных весов.
+
+
 ## v0.9.3 — Tactical Intelligence
 
 - Локальные геометрические тактические признаки и генерация отдельных teacher-labelled задач с исключением известных benchmark-позиций.

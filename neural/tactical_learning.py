@@ -64,7 +64,7 @@ def move_metrics(ordered, accepted):
     targets=set(accepted)
     rank=next((i for i,(m,_) in enumerate(ordered,1) if m in targets),None)
     if rank is None:raise ValueError('No valid target in ranking')
-    mass=sum(p for m,p in ordered if m in targets)
+    mass=min(1.,max(0.,sum(p for m,p in ordered if m in targets)))
     return {'top1':float(rank==1),'top3':float(rank<=3),'top5':float(rank<=5),
             'mrr':1/rank,'rank':rank,'target_mass':mass,'target_nll':-math.log(max(mass,1e-12))}
 
