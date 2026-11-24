@@ -25,11 +25,11 @@ def load_rows(path):
     if min(map(len,rows.values()))<2:raise ValueError('Insufficient independent validation examples')
     return rows
 
-def train(source,dataset,out,engine,epochs,batch,lr,device,seed,patience=6,resume=False,replay=None):
+def train(source,dataset,out,engine,epochs,batch,lr,device,seed,patience=6,resume=False,replay=None,optimization=None):
     with experiment_lock(out):
-        return train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,resume,replay)
+        return train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,resume,replay,optimization)
 
-def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,resume,replay=None):
+def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,resume,replay=None,optimization=None):
     import copy
     import math
     import numpy as np
@@ -43,6 +43,10 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
         raise ValueError('Incomplete dataset or dataset/engine metadata mismatch')
     rows=load_rows(dataset)
     mastery=meta['schema']=='tactical_data_v3'
+    from . import tactical_optimization as optimization_lib
+    if optimization is not None:
+        if not mastery or not 1<=optimization['min_epochs']<=epochs<=60:raise ValueError('Optimization requires V3 data and valid epoch bounds')
+        if optimization!=optimization_lib.settings(optimization['min_epochs'],optimization['replay_weight'],optimization['capacity'],optimization['negative_weight'],optimization['value_weight']):raise ValueError('Invalid optimization settings')
     replay_rows=[];replay_hash=None
     if replay is not None:
         if not mastery:raise ValueError('Replay requires v3 dataset')
@@ -71,6 +75,7 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
             'engine_sha256':engine_hash,'epochs':epochs,'batch':batch,'lr':lr,'seed':seed,
             'patience':patience,'device':str(dev)}
     if mastery:config.update(schema='tactical_train_v3',replay_sha256=replay_hash,objective='soft_policy_value_negative_curriculum_v1')
+    if optimization is not None:config.update(schema='tactical_train_v4',optimization=optimization)
     print('[TRAIN] Validating legal moves...',flush=True)
     with ChessBridge(engine) as bridge:
         for group in [*rows.values(),augmented,replay_rows]:
@@ -84,8 +89,11 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
     if hash_file(source)!=source_hash:raise RuntimeError('Source changed while loading')
     teacher=copy.deepcopy(model).eval()
     for p in teacher.parameters():p.requires_grad_(False)
-    opt=torch.optim.AdamW(model.parameters(),lr=lr)
-    scheduler=torch.optim.lr_scheduler.ReduceLROnPlateau(opt,mode='max',factor=.5,patience=2,min_lr=lr*.05)
+    if optimization is not None and optimization['capacity']!='same':
+        from neural.model import ChessNet
+        model=ChessNet(*optimization_lib.CAPACITY[optimization['capacity']]).to(dev)
+    opt=torch.optim.AdamW(optimization_lib.optimizer_groups(model,lr,optimization) if optimization is not None else model.parameters(),lr=lr)
+    scheduler=torch.optim.lr_scheduler.ReduceLROnPlateau(opt,mode='max',factor=.5,patience=4 if optimization is not None else 2,min_lr=[g['lr']*.05 for g in opt.param_groups])
     # Encode positions once; only batch tensors are sent to the accelerator.
     data=dict(rows)
     if augmented:data['augmented']=augmented
@@ -93,16 +101,18 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
     encoded={k:torch.from_numpy(np.stack([encode_fen(r['fen']) for r in group])) for k,group in data.items()}
     legal_ids={k:[[encode_move(m) for m in r['legal']] for r in group] for k,group in data.items()}
     target_ids={k:[[encode_move(m) for m in r.get('accepted',[])] for r in group] for k,group in data.items()}
-    targets={k:[soft_targets(r) for r in group] for k,group in data.items() if k!='replay'} if mastery else {}
+    targets={k:[soft_targets(r,optimization['temperature'],optimization['soft_fraction']) if optimization is not None else soft_targets(r) for r in group] for k,group in data.items() if k!='replay'} if mastery else {}
     def batch_data(split,indices):
         x=encoded[split][indices].to(dev)
         mask=torch.zeros((len(indices),POLICY_SIZE),dtype=torch.bool,device=dev)
         target=torch.zeros_like(mask,dtype=torch.float32)
         negative=torch.zeros_like(mask)
+        accepted=torch.zeros_like(mask)
         values=torch.zeros(len(indices),device=dev)
         for j,i in enumerate(indices):
             mask[j,legal_ids[split][i]]=True
             if split=='replay':continue
+            accepted[j,target_ids[split][i]]=True
             if mastery:
                 policy,bad,v=targets[split][i]
                 target[j,legal_ids[split][i]]=torch.tensor([policy[m] for m in data[split][i]['legal']],device=dev)
@@ -110,13 +120,13 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
                 values[j]=v
             else:
                 ids=target_ids[split][i];target[j,ids]=1/len(ids)
-        return x,mask,target,negative,values
+        return x,mask,target,negative,values,accepted
     def evaluate(split,network=model):
         network.eval();groups=defaultdict(list);individual=[]
         with torch.inference_mode():
             for start in range(0,len(rows[split]),batch):
                 idx=list(range(start,min(start+batch,len(rows[split]))))
-                x,mask,_,negative,values=batch_data(split,idx)
+                x,mask,_,negative,values,_=batch_data(split,idx)
                 logits,pred=network(x)
                 if not torch.isfinite(logits).all() or not torch.isfinite(pred).all():raise RuntimeError('Nonfinite network output')
                 probs=logits.masked_fill(~mask,-1e9).softmax(1)
@@ -150,7 +160,7 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
         print(f'[TRAIN] Resume epoch {start_epoch}; steps {steps}',flush=True)
     else:
         if candidate.exists():raise ValueError('Candidate exists without recovery state')
-        baseline,_=evaluate('validation');best=baseline['all'];best_epoch=0;best_model=None
+        baseline,_=evaluate('validation',teacher if optimization is not None else model);best=baseline['all'];best_epoch=0;best_model=None
         history=[];stale=0;steps=0;start_epoch=1;eligible_best=None
     def report(status):
         return {'schema':'tactical_train_v2','status':status,'source':str(source),**config,
@@ -159,10 +169,12 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
                 'validation_accuracy':eligible_best['top1'] if mastery and eligible_best else baseline['all']['top1'] if mastery else best['top1'],
                 'best_observed_validation':best,'selected_validation':eligible_best if mastery else best,
                 'retention_replay_rows':len(replay_rows),'optimizer_steps':steps,
+                'model_config':model.config,'source_model_config':teacher.config,'parameters':sum(p.numel() for p in model.parameters()),
                 'warning':'Validation selection, not independent holdout; no automatic promotion or PPO resume.'}
     counts=Counter(r['category'] for r in rows['train'])
     mean_size=len(rows['train'])/len(counts)
-    if stale>=patience:start_epoch=epochs+1
+    key=optimization_lib.selection if optimization is not None else selection_key
+    if stale>=patience and (optimization is None or optimization_lib.stop_allowed(start_epoch-1,optimization)):start_epoch=epochs+1
     for epoch in range(start_epoch,epochs+1):
         # Mine errors ONLY on training examples; all rows remain in each epoch.
         train_before,individual=evaluate('train')
@@ -173,10 +185,12 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
         indices=curriculum_indices(rows['train'],epoch) if mastery else list(range(len(weights)))
         rng=random.Random(seed*1000003+epoch);rng.shuffle(indices)
         split='augmented' if mastery and epoch%2==0 else 'train'
-        losses=[];grad_norms=[]
+        losses=[];grad_norms=[];component_sums=Counter();gradient_samples=[]
+        if optimization is not None and epoch<=optimization['warmup_epochs']:
+            for g in opt.param_groups:g['lr']=lr*min(1.,epoch/optimization['warmup_epochs'])*(.5 if g['name']=='value' else 1.)
         for start in range(0,len(indices),batch):
             part=indices[start:start+batch]
-            x,mask,target,negative,values=batch_data(split,part)
+            x,mask,target,negative,values,accepted=batch_data(split,part)
             logits,value=model(x)
             with torch.no_grad():
                 prior,old_value=teacher(x)
@@ -188,14 +202,21 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
                 per=per+.35*(value-values).square()+.20*(logp.exp()*negative).sum(1)
             w=torch.tensor([weights[i] for i in part],device=dev)
             loss=(per*w).sum()/w.sum()
+            if optimization is not None:
+                policy_loss,value_loss,terms=optimization_lib.components(logp,target,accepted,negative,value,values,prior,old_value,w,optimization,scale=min(1.,epoch/5))
+                loss=policy_loss+value_loss
+                for k,v in terms.items():component_sums[k]+=float(v.detach())
+                if (start//batch)%optimization['gradient_sample_interval']==0:
+                    gradient_samples.append(optimization_lib.gradient_diagnostics(policy_loss,value_loss,model))
             if replay_rows:
                 ri=rng.sample(range(len(replay_rows)),min(len(replay_rows),max(1,len(part)//4)))
-                rx,rm,_,_,_=batch_data('replay',ri)
+                rx,rm,_,_,_,_=batch_data('replay',ri)
                 rp,rv=model(rx)
                 with torch.no_grad():
                     op,ov=teacher(rx);op=op.masked_fill(~rm,-1e9).softmax(1)
                 replay_loss=-(op*rp.masked_fill(~rm,-1e9).log_softmax(1)).sum(1).mean()+.25*(rv-ov).square().mean()
-                loss=loss+.20*replay_loss
+                loss=loss+(.20 if optimization is None else optimization['replay_weight'])*replay_loss
+                if optimization is not None:component_sums['replay']+=float(replay_loss.detach())
             if not torch.isfinite(loss):raise RuntimeError('Nonfinite training loss')
             opt.zero_grad(set_to_none=True);loss.backward()
             norm=torch.nn.utils.clip_grad_norm_(model.parameters(),1.0,error_if_nonfinite=True)
@@ -206,25 +227,28 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
         current=metrics['all']
         # Smooth metrics govern scheduling; candidate requires strictly better top-1.
         lr_used=opt.param_groups[0]['lr']
-        scheduler.step(current['mrr'])
-        if selection_key(current)>selection_key(best):
+        if optimization is None or optimization_lib.schedule_allowed(epoch,optimization):scheduler.step(current['mrr'])
+        if key(current)>key(best):
             best=current;stale=0
             if not mastery and current['top1']>baseline['all']['top1']:
                 best_epoch=epoch;best_model={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}
         else:stale+=1
-        if mastery and eligible_candidate(current,baseline['all']) and (eligible_best is None or selection_key(current)>selection_key(eligible_best)):
+        if mastery and (optimization_lib.candidate_ok(current,baseline['all']) if optimization is not None else eligible_candidate(current,baseline['all'])) and (eligible_best is None or key(current)>key(eligible_best)):
             eligible_best=current;best_epoch=epoch;best_model={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}
         if mastery and epoch<5:stale=0
+        if optimization is not None and epoch<optimization['min_epochs']:stale=0
         history.append({'epoch':epoch,'loss':sum(losses)/len(losses),'validation':metrics,
                         'train_before':train_before,'train_after':train_after,'lr':lr_used,'next_lr':opt.param_groups[0]['lr'],
-                        'steps':steps,'curriculum_examples':len(indices),'augmented_epoch':split=='augmented','mean_grad_norm':sum(grad_norms)/len(grad_norms)})
+                        'steps':steps,'curriculum_examples':len(indices),'augmented_epoch':split=='augmented','mean_grad_norm':sum(grad_norms)/len(grad_norms),
+                        'loss_components':{k:v/len(losses) for k,v in component_sums.items()},'gradient_samples':gradient_samples,
+                        'next_group_lrs':{g.get('name','all'):g['lr'] for g in opt.param_groups}})
         save_state({'config':config,'epoch':epoch,'model':model.state_dict(),'optimizer':opt.state_dict(),
                     'scheduler':scheduler.state_dict(),'baseline':baseline,'history':history,'best':best,
                     'best_epoch':best_epoch,'best_model':best_model,'eligible_best':eligible_best,'stale':stale,'steps':steps,
                     'torch_rng':torch.get_rng_state(),'cuda_rng':torch.cuda.get_rng_state(dev) if dev.type=='cuda' else None})
         atomic_json(out/'training_report.json',report('running'))
         print(f'[TRAIN] {epoch}/{epochs} | top1 {current["top1"]:.3f} | top3 {current["top3"]:.3f} | MRR {current["mrr"]:.3f} | mass {current["target_mass"]:.3f} | lr {lr_used:g}',flush=True)
-        if stale>=patience:
+        if stale>=patience and (optimization is None or optimization_lib.stop_allowed(epoch,optimization)):
             print('[TRAIN] Early stopping',flush=True);break
     if hash_file(source)!=source_hash or hash_file(dataset)!=data_hash or hash_file(engine)!=engine_hash or (replay is not None and hash_file(replay)!=replay_hash):
         raise RuntimeError('Source, engine, dataset or replay changed during experiment')
@@ -244,8 +268,13 @@ def main():
     p.add_argument('--epochs',type=int,default=30);p.add_argument('--batch',type=int,default=64)
     p.add_argument('--lr',type=float,default=1e-4);p.add_argument('--seed',type=int,default=9312026)
     p.add_argument('--patience',type=int,default=6);p.add_argument('--resume',action='store_true');p.add_argument('--replay',type=Path)
+    p.add_argument('--optimize',action='store_true');p.add_argument('--min-epochs',type=int,default=20)
+    p.add_argument('--replay-weight',type=float,default=.10);p.add_argument('--capacity',choices=['same','light','standard','advanced'],default='same')
+    p.add_argument('--negative-weight',type=float,default=.40);p.add_argument('--value-weight',type=float,default=.25)
     p.add_argument('--device',choices=('auto','cpu','cuda'),default='auto');a=p.parse_args()
     if not all(p.is_file() for p in (a.source,a.dataset,a.engine)) or not 1<=a.epochs<=100 or not 1<=a.batch<=256 or not 0<a.lr<=.001 or not 1<=a.patience<=100:p.error('Invalid experiment configuration')
-    train(a.source,a.dataset,output_dir(a.output,a.resume),a.engine,a.epochs,a.batch,a.lr,a.device,a.seed,a.patience,a.resume,a.replay)
+    from .tactical_optimization import settings
+    cfg=settings(a.min_epochs,a.replay_weight,a.capacity,a.negative_weight,a.value_weight) if a.optimize else None
+    train(a.source,a.dataset,output_dir(a.output,a.resume),a.engine,a.epochs,a.batch,a.lr,a.device,a.seed,a.patience,a.resume,a.replay,cfg)
 
 if __name__=='__main__':main()
