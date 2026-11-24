@@ -20,6 +20,7 @@ def build(engine,out,exclude,count=500,depth=4,seed=9339127,attempts=100000):
     forbidden=set();hashes={}
     for p in sorted(Path(__file__).parent.glob('suite_v*.json')):
         payload,h=load_suite(p);hashes[str(p.resolve())]=h;forbidden.update(canonical(r['fen']) for r in payload['cases'])
+    if not exclude:raise ValueError('Prior training/replay files required')
     for p in exclude:
         hashes[str(p.resolve())]=hash_file(p)
         with p.open(encoding='utf-8') as f:

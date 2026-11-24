@@ -30,6 +30,25 @@ class OptimizationTests(unittest.TestCase):
         self.assertTrue(candidate_ok(dict(base,top1=.3),base))
         self.assertFalse(candidate_ok(dict(base,top1=.3,negative_mass=.72),base))
         self.assertFalse(candidate_ok(dict(base,top1=.3,teacher_regret_cp=810),base))
+    def test_cache_reuse_and_symmetry(self):
+        import gzip
+        from unittest.mock import patch
+        from benchmark.audit_cache import audit_cached
+        from neural.mastery import transform_row
+        case={'id':'x','fen':'7k/8/6K1/8/8/8/8/R7 w - - 0 1','legal':[],'accepted':[]}
+        flipped=transform_row(case)['fen']
+        with tempfile.TemporaryDirectory() as td:
+            p=Path(td);run=p/'run';run.mkdir()
+            archive=run/'a.jsonl.gz'
+            with gzip.open(archive,'wt',encoding='utf-8') as f:f.write(json.dumps({'fen':flipped})+'\n')
+            with patch('neural.storage.archived_segments',return_value=[archive]):
+                a=audit_cached(run,[case],p/'cache');b=audit_cached(run,[case],p/'cache')
+                self.assertEqual(a['overlapping_ids'],['x']);self.assertEqual(b['cache_hits'],1)
+                self.assertEqual(b['records_checked'],1)
+                with gzip.open(archive,'wt',encoding='utf-8') as f:f.write(json.dumps({'fen':'8/8/8/8/8/8/1K6/7k w - - 0 1'})+'\n')
+                c=audit_cached(run,[case],p/'cache')
+                self.assertEqual(c['cache_misses'],1);self.assertFalse(c['overlapping_ids'])
+
     @unittest.skipUnless(os.environ.get('CHESSAI_TACTICAL_TEST_ENGINE'),'Set engine for integration smoke')
     def test_optimization_train_resume(self):
         import torch

@@ -15,7 +15,9 @@ def run(experiment,engine,mode='single',source=None,epochs=60,min_epochs=20,batc
     meta=json.loads(dataset.with_name('dataset_meta.json').read_text(encoding='utf-8'))
     if meta.get('schema')!='tactical_data_v3' or not meta.get('complete') or meta.get('dataset_sha256')!=hash_file(dataset):
         raise ValueError('Need complete V3 dataset')
+    explicit=source is not None
     source=(source or Path(cfg['source'])).resolve()
+    if not explicit and hash_file(source)!=cfg['source_sha256']:raise ValueError('Original source changed; choose a frozen checkpoint explicitly')
     replay=experiment/'replay'/'replay.jsonl' if cfg.get('replay') else None
     if replay is not None and not replay.is_file():raise ValueError('Missing original replay snapshot')
     if mode=='replay' and replay is None:raise ValueError('Replay lab requires replay snapshot')

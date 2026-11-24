@@ -47,9 +47,13 @@ def examine(report,games,source,candidate='experimental_candidate.pt'):
                 'gained':[i for i in left if not left[i]['correct'] and right[i]['correct']],
                 'lost':[i for i in left if left[i]['correct'] and not right[i]['correct']]}
     full=comparable('policy');fresh=comparable('policy',True);hybrid=comparable('hybrid')
+    starts=report.get('opening_starts',[])
+    start_map={s['id']:s['fen'] for s in starts}
+    checks['tournament_integrity']=len(start_map)==len(starts)==report.get('pairs') and len(set(start_map.values()))==len(starts) and all(g.get('start_fen')==start_map.get(g['opening']) for g in games) and len([g for g in games if g.get('mode')=='policy'])==2*len(starts)
     scores=paired_scores(games,source,candidate);ci=confidence(scores)
     score=sum(scores)/len(scores) if scores else None
     checks['suite_hash']=report.get('suite_sha256')==expected_hash
+    checks['suite_budget']=version!='benchmark_v4' or len(all_ids)>=500
     checks['complete_cases']=bool(full and fresh and hybrid and excluded<=all_ids and len(clean)>=.9*len(all_ids) and len(clean_fresh)>=.85*len(fresh_ids) and all(set(scored(agent,m))==clean and set(scored(agent,m,True))==clean_fresh for agent in (a,b) for m in ('policy','hybrid')))
     checks['audited']=audit.get('status')=='scanned' and audit.get('malformed_records')==0 and audit.get('records_checked',0)>0
     checks['canonical_audit']=audit.get('signature_mode')=='canonical_v1'

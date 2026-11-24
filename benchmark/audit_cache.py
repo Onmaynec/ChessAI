@@ -9,7 +9,6 @@ from neural.tactics import canonical
 
 def audit_cached(run,cases,folder):
     from neural.storage import archived_segments
-    from .suite import signature,audit_sources
     folder=output_dir(folder,True)
     # Exact and canonical signatures: include every case sharing a symmetry.
     targets={}
@@ -35,10 +34,10 @@ def audit_cached(run,cases,folder):
                 # Canonicalize only rows with matching material counts? Full canonical scan for correctness.
                 import gzip
                 from collections import Counter
-                from neural.tactics import board
                 def material(fen):
-                    s=Counter(x.lower() for x in board(fen) if x!='.')
-                    return tuple(sorted(s.items()))
+                    placement=fen.split()[0].lower()
+                    if any(c not in 'pnbrqk12345678/' for c in placement) or len(placement.split('/'))!=8:raise ValueError('Invalid placement')
+                    return tuple(placement.count(c) for c in 'pnbrqk')
                 materials={material(r['fen']) for r in cases}
                 n=b=0;found=set()
                 opener=gzip.open if path.suffix=='.gz' else open
