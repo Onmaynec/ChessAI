@@ -80,7 +80,7 @@ def match(bridge,engine,models,a,b,start,white,mode,depth,cap):
     bridge.drop(910020)
     return {'a':a,'b':b,'opening':start['id'],'start_fen':start['fen'],'white':white,
             'result':state['result'] if state['finished'] else '*','reason':state['reason'] if state['finished'] else 'max_plies_unfinished',
-            'moves':moves,'fallback_moves':fallback,'mode':mode}
+            'moves':moves,'fallback_moves':fallback,'mode':mode,'plies':len(moves),'final_fen':state['fen']}
 
 def category_report(rows):
     groups=defaultdict(list)
@@ -96,7 +96,7 @@ def main(argv=None):
     p.add_argument('--output',type=Path,required=True,help='New report directory outside runs/models/config')
     p.add_argument('--agents',nargs='+')
     p.add_argument('--candidate',type=Path,help='Optional separate experimental checkpoint')
-    p.add_argument('--suite',choices=['v1','v2','v3'],default='v3')
+    p.add_argument('--suite',choices=['v1','v2','v3','v4'],default='v3')
     p.add_argument('--profile',choices=['quick','standard','full'],default='standard')
     p.add_argument('--pairs',type=int,default=None)
     p.add_argument('--max-plies',type=int,default=240)
@@ -104,6 +104,7 @@ def main(argv=None):
     p.add_argument('--device',choices=['auto','cpu','cuda'],default='auto')
     p.add_argument('--seed',type=int,default=9102026)
     p.add_argument('--skip-audit',action='store_true',help='Skip selected run overlap scan (report is explicitly unaudited)')
+    p.add_argument('--audit-cache',type=Path,help='Optional content-addressed canonical audit cache outside runs')
     p.add_argument('--validate-suite',action='store_true',help='Validate library only; no checkpoint loading')
     a=p.parse_args(argv)
     if not a.engine.is_file():p.error('Build C++ engine first')
@@ -139,7 +140,11 @@ def main(argv=None):
     else:
         print('[AUDIT] Scanning selected run experience (read-only)...',flush=True)
     try:
-        audit=audit_experience(a.run,cases) if not a.skip_audit else {'status':'not requested','overlapping_ids':[]}
+        if a.skip_audit:audit={'status':'not requested','overlapping_ids':[]}
+        elif a.audit_cache:
+            from .audit_cache import audit_cached
+            audit=audit_cached(a.run,cases,a.audit_cache)
+        else:audit=audit_experience(a.run,cases)
     except (KeyboardInterrupt,OSError,EOFError) as exc:
         write_json(out/'report.json',{'schema':'intelligence_benchmark_v1','status':'interrupted' if isinstance(exc,KeyboardInterrupt) else 'failed','phase':'audit','suite_sha256':suite_hash,'audit':{'status':'incomplete'},'error':str(exc)})
         print('[AUDIT] Incomplete; no strength results produced. Restart in a new report directory.',flush=True)
@@ -178,7 +183,7 @@ def main(argv=None):
                         latency.append(ms)
                         rows.append({'id':case['id'],'category':case['category'],'side':state['fen'].split()[1],
                                      'status':'fallback' if detail.get('mode')=='neural_fallback' else 'scored',
-                                     'move':move,'accepted':expected[case['id']],'v3_new':case.get('v3_new',False),
+                                     'move':move,'accepted':expected[case['id']],'v3_new':case.get('v3_new',False),'v4_new':case.get('v4_new',False),
                                      'correct':move in expected[case['id']],'latency_ms':ms,
                                      'actual_depth':detail.get('search_depth'), 'top3':detail.get('top3')})
                     cats=category_report(rows)
@@ -226,6 +231,9 @@ def main(argv=None):
         game_log=out/'games.jsonl'
         report['repetition_diagnostics']=repetition_stats(json.loads(line) for line in game_log.read_text(encoding='utf-8').splitlines()) if game_log.is_file() else repetition_stats([])
         report['games_sha256']=digest(game_log) if game_log.is_file() else None
+        if game_log.is_file():
+            games=[json.loads(l) for l in game_log.read_text(encoding='utf-8').splitlines()]
+            report['unfinished_games']=[{k:g[k] for k in ('opening','white','mode','plies','final_fen','reason')} for g in games if g['result']=='*']
         report['status']='complete'
     except BaseException as exc:
         report['status']='interrupted' if isinstance(exc,KeyboardInterrupt) else 'failed'
