@@ -149,3 +149,7 @@ Windows `.bat` и CUDA на физической RTX 3050 в тестовом к
 ### Tactical Learning Overhaul 0.9.3.1
 
 Профили Pilot/Standard/Full, возобновляемая генерация и обучение, стратификация, Top-k/MRR, hard-example weighting и scheduler. `START_TACTICAL_TRAINER.bat`.
+
+### Tactical Mastery 0.9.3.2
+
+Teacher score targets, curriculum, value/negative learning, legal symmetries, bounded retention replay, LR/anti-repetition labs and V3 promotion screening. `START_TACTICAL_TRAINER.bat`.

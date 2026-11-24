@@ -41,7 +41,10 @@ def examine(report,games,source,candidate='experimental_candidate.pt'):
     full=comparable('policy');fresh=comparable('policy',True);hybrid=comparable('hybrid')
     scores=paired_scores(games,source,candidate);ci=confidence(scores)
     score=sum(scores)/len(scores) if scores else None
-    checks['v3']=report.get('suite')=='benchmark_v3'
+    from benchmark.suite import load_suite
+    _,expected_hash=load_suite(Path(__file__).resolve().parents[1]/'benchmark'/'suite_v3.json')
+    checks['v3']=report.get('suite')=='benchmark_v3' and report.get('suite_sha256')==expected_hash
+    checks['complete_cases']=bool(full and fresh and hybrid and full['total']==56 and fresh['total']==30 and hybrid['total']==56)
     checks['audited']=report.get('audit',{}).get('status')=='scanned' and not report['audit'].get('overlapping_ids')
     checks['policy_no_regression']=bool(full and full['candidate']>=full['source'])
     checks['new_cases_improved']=bool(fresh and fresh['candidate']>fresh['source'])

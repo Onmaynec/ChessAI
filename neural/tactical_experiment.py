@@ -8,6 +8,7 @@ from uuid import uuid4
 from .tactical_learning import atomic_json,experiment_lock
 from .tactical_data import generate,output_dir,hash_file
 from .tactical_train import train
+from .mastery_replay import snapshot
 
 PROFILES={
     '1':{'count':600,'validation_count':100,'depth':3,'epochs':20,'batch':64,'lr':.0001,'attempts':30000},
@@ -22,15 +23,28 @@ def main():
     a=p.parse_args();engine=a.engine.resolve()
     if not engine.is_file():p.error('C++ engine missing')
     print('Stop PPO training and Vision Studio before starting.')
-    print('1. New tactical experiment\n2. Resume existing v0.9.3.1 experiment')
+    print('1. New Tactical Mastery experiment\n2. Resume existing experiment\n3. Learning Rate Lab (existing V3 dataset)\n4. Anti-Repetition Lab (local test)')
     mode=input('Action [1]: ').strip() or '1'
+    if mode=='4':
+        from .mastery_repetition_lab import run
+        source=Path(input(f'Source checkpoint [{DEFAULT_SOURCE}]: ').strip().strip('"') or DEFAULT_SOURCE).resolve()
+        if not source.is_file():p.error('Source checkpoint missing')
+        pairs=input('Opening pairs [8]: ').strip() or '8'
+        if not pairs.isdigit() or not 1<=int(pairs)<=50:p.error('Invalid pairs')
+        out=output_dir(Path('tactical_experiments')/('repetition_'+uuid4().hex[:10]))
+        print('Experiment:',out,flush=True);run(source,engine,out,int(pairs));return
+    if mode=='3':
+        from .mastery_lr_lab import run_lab
+        raw=input('Existing Tactical Mastery experiment directory: ').strip().strip('"')
+        if not raw:p.error('Experiment directory required')
+        run_lab(Path(raw).resolve(),engine);return
     if mode=='2':
         raw=input('Experiment directory (contains experiment.json): ').strip().strip('"')
         if not raw:p.error('Experiment directory required')
         out=Path(raw).resolve()
         if not (out/'experiment.json').is_file():p.error('Experiment configuration not found')
         cfg=json.loads((out/'experiment.json').read_text(encoding='utf-8'))
-        if cfg.get('schema')!='tactical_experiment_v2':p.error('Not a v0.9.3.1 experiment')
+        if cfg.get('schema') not in ('tactical_experiment_v2','tactical_experiment_v3'):p.error('Unsupported experiment schema')
         source=Path(cfg['source'])
         if not source.is_file() or hash_file(source)!=cfg['source_sha256'] or hash_file(engine)!=cfg['engine_sha256']:
             p.error('Source checkpoint or engine changed; cannot resume safely')
@@ -55,38 +69,49 @@ def main():
             if depth:cfg['depth']=int(depth)
         except ValueError:p.error('Invalid learning rate/depth')
         if not 3e-5<=cfg['lr']<=3e-4 or not 3<=cfg['depth']<=5:p.error('Invalid learning rate/depth')
-        cfg.update(schema='tactical_experiment_v2',source=str(source),source_sha256=hash_file(source),
-                   engine_sha256=hash_file(engine),seed=9312026,patience=6)
-        out=output_dir(Path('tactical_experiments')/('v0931_'+datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:6]))
+        use_replay=source.parent.name=='checkpoints' and (input('Retention replay from source run? [Y/n]: ').strip().lower()!='n')
+        cfg.update(schema='tactical_experiment_v3',source=str(source),source_sha256=hash_file(source),
+                   engine_sha256=hash_file(engine),seed=9322026,patience=6,replay=use_replay)
+        out=output_dir(Path('tactical_experiments')/('v0932_'+datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:6]))
     else:p.error('Invalid action')
     print('Experiment:',out,flush=True)
     # Separate root lock prevents concurrent orchestration of the same experiment.
     with experiment_lock(out):
         atomic_json(out/'experiment.json',cfg)
+        mastery=cfg['schema']=='tactical_experiment_v3'
         data=out/'data';data.mkdir(exist_ok=True)
         meta_path=data/'dataset_meta.json'
         if meta_path.is_file():
             meta=json.loads(meta_path.read_text(encoding='utf-8'))
             if meta.get('complete') and (data/'dataset.jsonl').is_file() and hash_file(data/'dataset.jsonl')==meta.get('dataset_sha256'):
+                if meta.get('schema')!=('tactical_data_v3' if mastery else 'tactical_data_v2'):raise ValueError('Dataset version mismatch')
                 for key in ('count','validation_count','depth','seed','engine_sha256'):
                     if meta.get(key)!=cfg[key]:raise ValueError('Completed dataset configuration mismatch')
                 print('[DATA] Reusing complete dataset',flush=True)
-            else:generate(engine,data,cfg['count'],cfg['depth'],cfg['seed'],cfg['attempts'],cfg['validation_count'],True)
-        else:generate(engine,data,cfg['count'],cfg['depth'],cfg['seed'],cfg['attempts'],cfg['validation_count'],True)
+            else:generate(engine,data,cfg['count'],cfg['depth'],cfg['seed'],cfg['attempts'],cfg['validation_count'],True,mastery)
+        else:generate(engine,data,cfg['count'],cfg['depth'],cfg['seed'],cfg['attempts'],cfg['validation_count'],True,mastery)
         if hash_file(source)!=cfg['source_sha256']:raise RuntimeError('Original checkpoint changed; stop training before resuming')
+        replay=snapshot(source.parent.parent,data/'dataset.jsonl',out/'replay',engine,seed=cfg['seed']) if mastery and cfg.get('replay') else None
         dest=out/'train';dest.mkdir(exist_ok=True)
-        train(source,data/'dataset.jsonl',dest,engine,cfg['epochs'],cfg['batch'],cfg['lr'],'auto',cfg['seed'],cfg['patience'],True)
+        train(source,data/'dataset.jsonl',dest,engine,cfg['epochs'],cfg['batch'],cfg['lr'],'auto',cfg['seed'],cfg['patience'],True,replay)
         print('Reports:',dest/'training_report.json',flush=True)
         if (dest/'candidate.pt').is_file():
             print('Candidate is experimental; do not replace latest.pt.',flush=True)
             from neural.agent_profiles import ALIASES
             if source.parent.name=='checkpoints' and source.name in ALIASES:
-                if input('Compare source and candidate now? [y/N]: ').strip().lower()=='y':
+                print('1. Diagnostic comparison (6 pairs, no archive audit)\n2. Extended promotion screening (24 pairs, full archive audit)\n3. Skip comparison')
+                compare=input('Comparison [1]: ').strip() or '1'
+                if compare in ('1','2'):
                     from benchmark.run import main as benchmark_main
                     if hash_file(source)!=cfg['source_sha256']:raise RuntimeError('Source changed before comparison')
-                    benchmark_main(['--run',str(source.parent.parent),'--engine',str(engine),'--agents',source.name,
-                                    '--candidate',str(dest/'candidate.pt'),'--output',str(out/('comparison_'+uuid4().hex[:6])),
-                                    '--profile','standard','--skip-audit'])
+                    from .mastery_guard import run_guard
+                    comparison=out/('comparison_'+uuid4().hex[:6])
+                    args=['--run',str(source.parent.parent),'--engine',str(engine),'--agents',source.name,
+                          '--candidate',str(dest/'candidate.pt'),'--output',str(comparison),
+                          '--profile','standard','--suite','v3','--seed','9322026','--pairs','6' if compare=='1' else '24']
+                    if compare=='1':args.append('--skip-audit')
+                    benchmark_main(args)
+                    run_guard(comparison/'report.json',source.name,dest/'candidate.pt',source,comparison/'promotion_guard.json')
             else:print('For a non-standard source path use benchmark.run manually.',flush=True)
 
 if __name__=='__main__':main()

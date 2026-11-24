@@ -1,5 +1,13 @@
 # Chess AI Changelog
 
+## v0.9.3.2 — Tactical Mastery
+
+- Targeted quota generation with all-legal teacher scores, soft policy/value objectives and negative examples.
+- Curriculum, verified symmetry augmentation, bounded retention distillation, resumable training.
+- LR Lab, local Anti-Repetition Lab, expanded 56-case Benchmark V3 and conservative manual promotion guard.
+- No changes to original checkpoint, PPO or C++ ABI; strength gains require experiments.
+
+
 ## v0.9.3.1 — Tactical Learning Overhaul
 
 - Возобновляемые генерация и обучение, стратифицированное разбиение, более глубокая перепроверка учителем.
