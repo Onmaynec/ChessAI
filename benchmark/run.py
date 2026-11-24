@@ -230,7 +230,7 @@ def main(argv=None):
         report['status']='interrupted' if isinstance(exc,KeyboardInterrupt) else 'failed'
         report['error']=str(exc);write_json(out/'report.json',report);raise
     write_json(out/'report.json',report)
-    lines=['# Intelligence Benchmark v0.9.1','',f"Status: {report['status']} | device: {device} | suite: {suite_hash[:12]}",
+    lines=['# Intelligence Benchmark v0.9.3','',f"Status: {report['status']} | device: {device} | suite: {suite_hash[:12]}",
            '', 'Internal ratings only. Curated motif targets are not certified optimal moves. Small groups are diagnostic.','']
     for n,results in report['agents'].items():
         lines.extend(['## '+n,'','| Mode | Category | Correct / scored |','|---|---|---|'])

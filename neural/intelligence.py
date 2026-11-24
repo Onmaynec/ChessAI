@@ -328,6 +328,8 @@ def choose_move(model, state: dict, bridge, engine: Path, *,
             bridge.drop(temp_id)
         except (RuntimeError, OSError):
             pass
+    # Exact terminal wins are available even if the optional search process fails.
+    winning=[m for m in legal if children[m]['finished'] and _terminal_score(children[m],state['fen'].split()[1])>0]
     active = [m for m in legal if not children[m]['finished']]
     try:
         try:
@@ -347,10 +349,11 @@ def choose_move(model, state: dict, bridge, engine: Path, *,
             q+=_opening_score(move,state['fen'],len(history_moves))
             ranking.append((q,move))
         ranking.sort(reverse=True)
-        return ranking[0][1], value, {
+        fallback_move=max(winning,key=lambda m:priors[m]) if winning else ranking[0][1]
+        return fallback_move, value, {
             'mode':'neural_fallback', 'agent_style':style, 'repertoire':repertoire, 'reason':str(exc), 'opening':preferred,
             'opening_name':opening_name, 'opening_plan':opening_plan, 'search_depth':0, 'top':ranking[:4],
-            'search_time_s':round(perf_counter()-started,3)}
+            'proven_terminal_win':bool(winning), 'search_time_s':round(perf_counter()-started,3)}
 
     scores = {}
     answers = {}
@@ -443,6 +446,10 @@ def choose_move(model, state: dict, bridge, engine: Path, *,
              if deep_used else [])
     candidates = sorted(ranked_moves,key=lambda m:(-scores[m],-priors[m],m))[:6]
     reported_depth = (deep_depth if deep_used else actual_depth)+1
+    from .tactics import describe
+    evidence=describe(state['fen'],selected_move,children[selected_move]['fen'],chosen[1])
+    labels={'fork':'Кандидат на двойное нападение','pin':'Абсолютная связка','pin_capture':'Взятие связанной фигуры','discovered_attack':'Вскрытое нападение','check_evasion':'Ответ на шах','possible_sacrifice':'Возможная жертва по оценке поиска'}
+    tactical_notes=[labels[t['kind']]+': '+', '.join(t['squares']) for t in evidence if t['kind'] in labels]
     return selected_move, value, {
         'mode':'neural_plus_cpp_search',
         'agent_style':style,
@@ -461,7 +468,8 @@ def choose_move(model, state: dict, bridge, engine: Path, *,
         'search_nodes':sum(r.nodes for r in search_records) if all(r.nodes is not None for r in search_records) else None,
         'search_qnodes':sum(r.qnodes for r in search_records) if all(r.qnodes is not None for r in search_records) else None,
         'search_tt_hits':sum(r.tt_hits for r in search_records) if all(r.tt_hits is not None for r in search_records) else None,
-        'motifs':_motifs(state['fen'],selected_move,chosen[1],max(other_values) if other_values else None,
+        'tactical_evidence':evidence,
+        'motifs':tactical_notes+_motifs(state['fen'],selected_move,chosen[1],max(other_values) if other_values else None,
                          opening_name if selected_move==preferred else None)
                   + (['Возможная ловушка при ошибочном взятии — НЕ форсированная комбинация'] if traps else []),
         'possible_traps':traps,

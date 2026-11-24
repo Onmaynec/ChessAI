@@ -57,7 +57,7 @@ def describe(before,move,after,score_cp=None):
     tags=[];targets=[s for s in attacks(a,dst) if enemy(a[s],side) and VALUES[a[s].lower()]>=320]
     if len(targets)>=2:
         tags.append({'kind':'fork','squares':[name(dst),*map(name,sorted(targets))]})
-    if any(v==dst for _,v,_ in pins(b,'b' if side=='w' else 'w')):
+    if any(v==src for _,v,_ in pins(b,'b' if side=='w' else 'w')):
         tags.append({'kind':'pinned_piece_move','squares':[name(src),name(dst)]})
     if any(v==dst for _,v,_ in pins(b,side)) and enemy(b[dst],side):
         tags.append({'kind':'pin_capture','squares':[name(src),name(dst)]})

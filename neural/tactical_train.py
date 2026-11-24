@@ -31,7 +31,11 @@ def train(source,dataset,out,engine,epochs,batch,lr,device,seed):
     from neural.encoding import encode_fen,encode_move,FEATURE_VERSION,POLICY_SIZE
     from neural.selfplay import ChessBridge
     from neural.agent import rank
-    rows=load_rows(dataset);source_hash=hash_file(source);data_hash=hash_file(dataset)
+    source_hash=hash_file(source);data_hash=hash_file(dataset);engine_hash=hash_file(engine)
+    meta=json.loads(dataset.with_name('dataset_meta.json').read_text(encoding='utf-8'))
+    if meta.get('schema')!='tactical_data_v1' or meta.get('dataset_sha256')!=data_hash or meta.get('engine_sha256')!=engine_hash:
+        raise ValueError('Dataset metadata/hash or teacher engine mismatch')
+    rows=load_rows(dataset)
     # Verify all legal move lists with the core, not just the JSON labels.
     with ChessBridge(engine) as bridge:
         for group in rows.values():
@@ -53,7 +57,7 @@ def train(source,dataset,out,engine,epochs,batch,lr,device,seed):
                     groups[k][0]+=hit;groups[k][1]+=1
         return {k:{'correct':v[0],'total':v[1],'accuracy':v[0]/v[1]} for k,v in groups.items()}
     baseline=evaluate();best=baseline['all']['accuracy'];best_epoch=0
-    history=[];candidate=out/'candidate.pt'
+    history=[];candidate=out/'candidate.pt';pending=out/'unvalidated_candidate.tmp'
     for epoch in range(1,epochs+1):
         model.train()
         # Freeze BN running statistics on small specialised datasets.
@@ -84,15 +88,16 @@ def train(source,dataset,out,engine,epochs,batch,lr,device,seed):
         print(f'[TRAIN] epoch {epoch}/{epochs}: {metrics["all"]}',flush=True)
         if metrics['all']['accuracy']>best:
             best=metrics['all']['accuracy'];best_epoch=epoch
-            temp=candidate.with_suffix('.tmp')
+            temp=pending.with_suffix('.writing')
             torch.save({'feature_version':FEATURE_VERSION,'config':model.config,
                         'model':{k:v.detach().cpu() for k,v in model.state_dict().items()},
                         'tactical_adapter':{'source_sha256':source_hash,'dataset_sha256':data_hash,'epoch':epoch}},temp)
-            temp.replace(candidate)
-    if hash_file(source)!=source_hash or hash_file(dataset)!=data_hash:
-        candidate.unlink(missing_ok=True);raise RuntimeError('Source or dataset changed during experiment')
+            temp.replace(pending)
+    if hash_file(source)!=source_hash or hash_file(dataset)!=data_hash or hash_file(engine)!=engine_hash:
+        pending.unlink(missing_ok=True);raise RuntimeError('Source, engine or dataset changed during experiment')
+    if best_epoch:pending.replace(candidate)
     report={'schema':'tactical_train_v1','source':str(source),'source_sha256':source_hash,'dataset_sha256':data_hash,
-            'engine_sha256':hash_file(engine),'baseline':baseline,'epochs':history,'selected_epoch':best_epoch,
+            'engine_sha256':engine_hash,'baseline':baseline,'epochs':history,'selected_epoch':best_epoch,
             'candidate':str(candidate) if best_epoch else None,'validation_accuracy':best,
             'warning':'Selection uses generated validation, not independent Elo/holdout; no automatic promotion or PPO resume.'}
     (out/'training_report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')

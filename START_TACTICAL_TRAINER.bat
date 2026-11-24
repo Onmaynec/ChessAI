@@ -26,6 +26,16 @@ if errorlevel 1 goto fail
 "%CHESSAI_PYTHON%" -m neural.tactical_train --source "%SOURCE%" --dataset "%OUT%\data\dataset.jsonl" --engine "%ENGINE%" --output "%OUT%\train" --epochs %EPOCHS%
 if errorlevel 1 goto fail
 echo Results: %OUT%
+if not exist "%OUT%\train\candidate.pt" goto finish
+echo Candidate is experimental. Do not replace latest.pt.
+choice /C YN /N /M "Compare source and candidate now (Y/N)? "
+if errorlevel 2 goto finish
+for %%I in ("%SOURCE%") do set "SOURCE_NAME=%%~nxI"
+for %%I in ("%SOURCE%") do set "SOURCE_DIR=%%~dpI"
+for %%I in ("%SOURCE_DIR%..") do set "SOURCE_RUN=%%~fI"
+"%CHESSAI_PYTHON%" -m benchmark.run --engine "%ENGINE%" --run "%SOURCE_RUN%" --agents "%SOURCE_NAME%" --candidate "%OUT%\train\candidate.pt" --output "%OUT%\comparison" --profile quick --skip-audit
+if errorlevel 1 goto fail
+:finish
 pause
 exit /b 0
 :fail

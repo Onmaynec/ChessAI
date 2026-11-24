@@ -101,11 +101,13 @@ def generate(engine,out,count,depth,seed,attempts):
         payload,_=load_suite(path)
         forbidden.update(canonical(c['fen']) for c in payload['cases'])
     if not forbidden:raise ValueError('Benchmark exclusion set missing')
+    engine_hash=hash_file(engine)
     rng=random.Random(seed);seen=set(forbidden);counts=Counter();splits=Counter();failures=0
     cap=max(6,count//5)
     target={'train':max(1,int(count*.8)),'validation':count-max(1,int(count*.8))}
     with (out/'dataset.jsonl').open('x',encoding='utf-8') as f,ChessBridge(engine) as bridge:
         for i in range(attempts):
+            if i%25==0:print(f'[DATA] attempt {i}/{attempts}, accepted {sum(splits.values())}/{count}',flush=True)
             if all(splits[k]>=v for k,v in target.items()):break
             split='validation' if i%5==0 else 'train'
             if splits[split]>=target[split]:continue
@@ -141,7 +143,8 @@ def generate(engine,out,count,depth,seed,attempts):
             f.write(json.dumps(row)+'\n');f.flush()
             counts[category]+=1;splits[split]+=1
             print(f'[DATA] {sum(splits.values())}/{count} {split} {category} (attempt {i+1}/{attempts})',flush=True)
-    meta={'schema':'tactical_data_v1','seed':seed,'depth':depth,'engine_sha256':hash_file(engine),
+    if hash_file(engine)!=engine_hash:raise RuntimeError('Engine changed during generation')
+    meta={'schema':'tactical_data_v1','seed':seed,'depth':depth,'engine_sha256':engine_hash,
           'counts':dict(counts),'splits':dict(splits),'teacher_failures':failures,'excluded_signatures':len(forbidden),
           'complete':all(splits[k]>=v for k,v in target.items()),'dataset_sha256':hash_file(out/'dataset.jsonl')}
     (out/'dataset_meta.json').write_text(json.dumps(meta,indent=2),encoding='utf-8')
