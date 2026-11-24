@@ -422,12 +422,13 @@ class Workspace:
         self.overlay_attach=self.button(actions,'↪ Присоед.','↪ Join',lambda:self.launch(attach_any_position=True),width=75)
         self.overlay_attach.pack(side='left',fill='x',expand=True,padx=2)
         colors=self.row(self.overlay)
+        self.label(colors,'Сторона','Side',size=11,color=MUTED).pack(side='left',padx=(2,6))
         self.overlay_color=self.choice(colors,'','',self.color,[('white','Белые','White'),('black','Чёрные','Black')],lock=True)
         self._locked.extend([self.overlay_start,self.overlay_attach])
         self.overlay_stop=self.button(self.overlay,'■ Остановить · Esc','■ Stop · Esc',self.stop)
         self.overlay_stop.configure(fg_color='#482631',hover_color='#703544',border_color='#73424c',text_color='#ffd9df')
         self.overlay_stop.pack(fill='x',padx=10,pady=(3,1))
-        self.label(self.overlay,'Только компьютерный бот','Computer bot only',color=MUTED,size=10).pack(anchor='center')
+        self.label(self.overlay,'Только компьютерный бот · LAlt+1 / 2','Computer bot only · LAlt+1 / 2',color=MUTED,size=10).pack(anchor='center')
 
     def navigate(self,key):
         self.page=key
@@ -463,6 +464,7 @@ class Workspace:
             button.configure(text=self.tr(ru,en) if wide else icon,width=126 if wide else 42,anchor='w' if wide else 'center')
         if wide:self.system_card.pack(side='bottom',fill='x',padx=7,pady=8)
         else:self.system_card.pack_forget()
+        self.option_cells[0].master.grid_columnconfigure(2,weight=1 if wide else 0,uniform='opts' if wide else '')
         for i,cell in enumerate(self.option_cells):
             cell.grid(row=0 if wide else i//2,column=i if wide else i%2,columnspan=1 if wide or i<2 else 2)
         for i,cell in enumerate(self.toggle_cells):
@@ -725,15 +727,19 @@ class Workspace:
             self._status_cache=active
             for w in (self.stop_button,self.overlay_stop,self.header_stop):w.configure(state='normal' if active else 'disabled')
 
+    def window_scale(self):
+        return max(.5,float(getattr(self.root,'_get_window_scaling',lambda:1.)() or 1.))
+
     def prepare_launch_layout(self):
-        """Prefer an actual non-overlapping window; shrink the full panel if needed."""
+        """Use physical coordinates for board safety and logical Tk sizes."""
         r=self.root;r.update_idletasks()
-        board=self.rect
+        scale=self.window_scale()
+        width=round(r.winfo_width()/scale)
+        height=round(r.winfo_height()/scale)
         sw,sh=r.winfo_screenwidth(),r.winfo_screenheight()
-        width,height=r.winfo_width(),r.winfo_height()
-        # Include some space for native window borders and title bar.
-        for candidate in (width, min(width,720), min(width,560),510):
-            pos=safe_position(board,candidate+16,height+42,sw,sh)
+        sizes=(width,) if self.compact else (width,min(width,720),min(width,560),510)
+        for candidate in sizes:
+            pos=safe_position(self.rect,round(candidate*scale)+16,round(height*scale)+42,sw,sh)
             if pos is not None:
                 r.geometry(f'{candidate}x{height}+{pos[0]}+{pos[1]}')
                 r.update_idletasks()
@@ -742,11 +748,16 @@ class Workspace:
 
     def toggle_overlay(self):
         r=self.root;r.update_idletasks()
+        scale=self.window_scale()
+        sw,sh=r.winfo_screenwidth(),r.winfo_screenheight()
+        rect=getattr(self.bot,'rect',None) or self.rect
         if not self.compact:
-            pos=safe_position(getattr(self.bot,'rect',None) or self.rect,376,384,r.winfo_screenwidth(),r.winfo_screenheight())
+            pos=safe_position(rect,round(360*scale)+16,round(350*scale)+42,sw,sh)
             if pos is None:
                 messagebox.showwarning('Vision Bot',self.tr('Нет свободного места рядом с доской.','No space beside the board.'));return
             self._full_geometry=r.geometry()
+            if self._layout_pending is not None:
+                r.after_cancel(self._layout_pending);self._layout_pending=None
             self.compact=True;self.full.pack_forget();self.overlay.pack(fill='both',expand=True)
             r.minsize(340,340);r.geometry(f'360x350+{pos[0]}+{pos[1]}')
             r.attributes('-alpha',clamp_alpha(self.opacity.get()));r.attributes('-topmost',True)
@@ -755,11 +766,9 @@ class Workspace:
             if self.worker and self.worker.is_alive():
                 match=re.match(r'(\d+)x(\d+)',geometry)
                 width,height=(map(int,match.groups()) if match else (560,650))
-                rect=getattr(self.bot,'rect',None) or self.rect
-                sw,sh=r.winfo_screenwidth(),r.winfo_screenheight()
                 result=None
                 for candidate in (width,min(width,720),min(width,560),510):
-                    pos=safe_position(rect,candidate+16,height+42,sw,sh)
+                    pos=safe_position(rect,round(candidate*scale)+16,round(height*scale)+42,sw,sh)
                     if pos is not None:
                         result=f'{candidate}x{height}+{pos[0]}+{pos[1]}'
                         break
@@ -770,7 +779,9 @@ class Workspace:
             self.compact=False;self.overlay.pack_forget();self.full.pack(fill='both',expand=True)
             r.attributes('-alpha',1.);r.minsize(510,520)
             r.geometry(geometry)
-            self.set_topmost();self.layout(force=True)
+            self.set_topmost()
+            self._layout_key=None
+            self._layout_pending=r.after(180,self.finish_resize)
         self.save_workspace_settings()
 
     def drag_start(self,event):

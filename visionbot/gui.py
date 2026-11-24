@@ -195,13 +195,13 @@ class App(Workspace):
                 title=title.casefold()
                 # Outside our own panel, require a visible computer-game title.
                 computer='chess.com' in title and any(word in title for word in ('computer','bot','компьютер','бот'))
-                if self.root.state()=='normal' and (our_panel_is_foreground() or computer) and not self.root.grab_current():
+                if self.root.state() in ('normal','zoomed') and (our_panel_is_foreground() or computer) and not self.root.grab_current():
                     self.launch(attach_any_position=action==2)
         finally:
             if not self._closing:self.root.after(65,self.poll_shortcuts)
 
     def launch(self, attach_any_position: bool = False):
-        if self._launching or self._closing:return
+        if getattr(self,'_launching',False) or getattr(self,'_closing',False):return
         self._launching=True
         try:self._launch(attach_any_position)
         finally:
