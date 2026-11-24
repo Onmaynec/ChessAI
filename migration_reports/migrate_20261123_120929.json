@@ -1,0 +1,12 @@
+{
+  "source": "C:\\Users\\Мамлеев Роман\\Downloads\\ChessAI_v0.6.0_Learning_Quality_Performance\\ChessAI-v0.6.0",
+  "destination": "C:\\Users\\Мамлеев Роман\\Downloads\\ChessAI_v0.7.0_Training_Performance_Intelligence\\ChessAI-v0.7.0",
+  "copy_count": 303,
+  "identical_count": 0,
+  "bytes_to_copy": 2245205116,
+  "reused_cuda_python": "C:\\Users\\Мамлеев Роман\\Downloads\\ChessAI_v0.6.0_Learning_Quality_Performance\\ChessAI-v0.6.0\\.venv-cuda\\Scripts\\python.exe",
+  "copied": 303,
+  "dry_run": false,
+  "at": "2026-11-23T12:09:29.942537+00:00",
+  "note": "Source installation and checkpoints were not modified."
+}

@@ -1,0 +1,66 @@
+build/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+output/*.jsonl
+models/*.pt
+models/*/*.pt
+models/*/*.jsonl
+.idea/
+.vscode/
+*.obj
+*.o
+*.exe
+
+runs/
+preview.html
+
+# User-specific absolute interpreter path (may point into old installation)
+config/python_path.txt
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Virtual environments
+.venv/
+.venv-cuda/
+venv/
+
+# Training progress and checkpoints
+/runs/
+*.pt
+*.pth
+*.ckpt
+
+# Logs and generated datasets
+*.log
+*.jsonl
+*.jsonl.gz
+
+# Build artifacts
+/build/
+/dist/
+/cmake-build-*/
+*.obj
+*.pdb
+*.exe
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Temporary files
+*.tmp
+*.bak
+
+# IDE
+.vs/
+.idea/
+
+# Release archives
+*.zip
+

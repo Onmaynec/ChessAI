@@ -1,0 +1,494 @@
+{
+  "release": "ChessAI v0.7.0 — Training Performance & Intelligence",
+  "source_version": "0.6.0",
+  "feature_version": "planes19_actions73_v1",
+  "user_runs_included": false,
+  "note": "Local user checkpoint and experience history are transferred by UPGRADE_FROM_CURRENT.bat and archived locally. Old CUDA Python environment can be reused in place.",
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 258,
+      "sha256": "c6a1fad75326138d23ec83e0d39f6ef9bd381f92a709e061ba9d0ace5e9818d9"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "bytes": 10872,
+      "sha256": "570814afc04aa4042c286e10b47ed27c13c9fb970ba3455505e5612e9d014a20"
+    },
+    {
+      "path": "CMakeLists.txt",
+      "bytes": 784,
+      "sha256": "be38ddbd0be5ddc3aa4254d9b6a02febdc71348334f5ee03ccaca0d809855199"
+    },
+    {
+      "path": "README.md",
+      "bytes": 11559,
+      "sha256": "af2b55f3993a4940f0837ada48266932895922c824197716d56132c3a1e8b9db"
+    },
+    {
+      "path": "START_CHESS_AI.bat",
+      "bytes": 1891,
+      "sha256": "8e08a7f2d322cf457cb8a543761666f1313a290ce8d3b6404aad68d217a3a954"
+    },
+    {
+      "path": "UPGRADE_FROM_CURRENT.bat",
+      "bytes": 1306,
+      "sha256": "32df273d6bfad1c228cb79666b9ffd81ef744f241d2fd93ae26a163f615162ac"
+    },
+    {
+      "path": "VERSION",
+      "bytes": 6,
+      "sha256": "967d9afb101346667166f2e76e81910bc190488d7d41d50ca0072e9d92f00e32"
+    },
+    {
+      "path": "dashboard/__init__.py",
+      "bytes": 46,
+      "sha256": "ad08bbf6fac830a23ba8446073fa07a6715bfa6c872247690b9784a3c74e64c5"
+    },
+    {
+      "path": "dashboard/analysis.py",
+      "bytes": 6275,
+      "sha256": "11893ce2492598b4cb0dd77ff91470aa9a7751c38520353e445dd5b755ce4970"
+    },
+    {
+      "path": "dashboard/server.py",
+      "bytes": 26527,
+      "sha256": "ef886b07c145292434874fd4c80368a8e3e4b5c29d371797c8137683c395bda7"
+    },
+    {
+      "path": "dashboard/ui/app.js",
+      "bytes": 34161,
+      "sha256": "78c14725a1a03ed3e36373934b9130dc1218887ef9c9bf3ca1937c16a1eab4e8"
+    },
+    {
+      "path": "dashboard/ui/index.html",
+      "bytes": 29029,
+      "sha256": "4a5a6be72c184d3d70ef9ee2c5ea08d6eec3fd39fffa93f2df98b8a6a46c882d"
+    },
+    {
+      "path": "dashboard/ui/styles.css",
+      "bytes": 19461,
+      "sha256": "d5126eb2d50c5789d88875530bd3273ca2fcc08bee2a368c10a6602700c621cc"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "bytes": 5525,
+      "sha256": "b9bdcef2d3aefd91f823f4e3db299ca3e443b3839da2509c9ca9f7423c467efb"
+    },
+    {
+      "path": "docs/METRICS_REVIEW_20261123.md",
+      "bytes": 3214,
+      "sha256": "e04c8249c8bdefdbf607f1a7cc6b713b40e790e9ecf635496e01bd51985d8dd5"
+    },
+    {
+      "path": "docs/README_V0.5_LEGACY.md",
+      "bytes": 14254,
+      "sha256": "95365984d2f773791e81a4b53ab02938478a06412df87ebf9306c617179cc188"
+    },
+    {
+      "path": "docs/README_V0.6_LEGACY.md",
+      "bytes": 12320,
+      "sha256": "19a8ae182ba793cd799699ffe70e1ef2e8d7196294da3d762d5ab687210c3564"
+    },
+    {
+      "path": "docs/ROADMAP.md",
+      "bytes": 6442,
+      "sha256": "716852648a0b51be711d0a0507046606e213b5070550e30f134b686f7094e4af"
+    },
+    {
+      "path": "docs/SELFPLAY_METHOD.md",
+      "bytes": 7237,
+      "sha256": "788e4d05a7c73c45f50455944f5bfc807f1cad14028c09acdadea9b5acea744b"
+    },
+    {
+      "path": "docs/TEST_REPORT.md",
+      "bytes": 1367,
+      "sha256": "29ce80ab7741bd9d7b3d4e8cc4237c0ac8f50a1520aa0cfe0a35ca18cea4b529"
+    },
+    {
+      "path": "docs/TEST_REPORT_0.3.md",
+      "bytes": 3406,
+      "sha256": "2cb20f8b47029f396464078a0527a0ce2f9e7f3f5d0c6ddb0ddb425eb43e554e"
+    },
+    {
+      "path": "docs/TEST_REPORT_0.4.md",
+      "bytes": 2223,
+      "sha256": "b724f08666c2a494693a59891f9620d52595e2d7dd6aafec8136d100373b95ac"
+    },
+    {
+      "path": "docs/TEST_REPORT_0.5.md",
+      "bytes": 1995,
+      "sha256": "fec91d698c8f8c9b99fb532bd15d35a9058ac64d6b1bb1b64fea438acef0a3e4"
+    },
+    {
+      "path": "docs/TEST_REPORT_0.6.md",
+      "bytes": 5312,
+      "sha256": "fff14f1253a980f118f0f00b88ea4dd3dcfee950617d85eb8a19e833adeb3b00"
+    },
+    {
+      "path": "docs/TEST_REPORT_0.7.md",
+      "bytes": 2598,
+      "sha256": "c7c3090c09237227540392d39003b3f55e55a4d9b693e22ee341f57389921219"
+    },
+    {
+      "path": "docs/TRAINING_STUDIO.md",
+      "bytes": 6409,
+      "sha256": "9dc82bfcb7862eed752bffe75a14c8ca2695b9d4a0851448e2e2fd21b15e22cf"
+    },
+    {
+      "path": "docs/UPGRADE_TO_0.5.md",
+      "bytes": 5722,
+      "sha256": "67addd57e62faff3b7febea140b8d60420c01d10402382e1eff466944503cc13"
+    },
+    {
+      "path": "docs/UPGRADE_TO_0.6.md",
+      "bytes": 6374,
+      "sha256": "8e277152ca738ae7683920af82d762e0b0eb2adc515f6a4110e0000d4a5ef6c9"
+    },
+    {
+      "path": "docs/UPGRADE_TO_0.7.md",
+      "bytes": 6635,
+      "sha256": "844e5438b959c4548524108c6fb4914609b88b8861f0ef7919c314d5dbc85156"
+    },
+    {
+      "path": "docs/UPGRADE_V03_TO_V04.md",
+      "bytes": 9196,
+      "sha256": "08dc0efb8a63488588074a0b97fe6b1b985b38e3d64533ea1e82a449a48d691f"
+    },
+    {
+      "path": "docs/screenshots/game_replay.png",
+      "bytes": 96948,
+      "sha256": "d267a01867e374e7508f65dc07125059218238199bea0f0a416b1d4d451a4521"
+    },
+    {
+      "path": "docs/screenshots/training_studio.png",
+      "bytes": 286156,
+      "sha256": "3849c8ecc1fd94ebf8f60a7a56f8f557fb7007098207ba0f86d40bfcf8cebc2c"
+    },
+    {
+      "path": "examples/demo_endgame/checkpoints/latest.pt",
+      "bytes": 1369020,
+      "sha256": "4f717eb7109418d907930c2bd07a7e177cbb9274aaa18e60e08c0b6c44e8ac61"
+    },
+    {
+      "path": "examples/demo_endgame/experience.jsonl",
+      "bytes": 66431,
+      "sha256": "da2738db5d59e39d54db48ea8a1d69dcfc0c358caed1d1ccef609e6294a115bd"
+    },
+    {
+      "path": "examples/demo_endgame/games.jsonl",
+      "bytes": 10728,
+      "sha256": "bdb7fe23ebd3b4cf9f97724ca38a5497542894cec555e104ebba3c3ca07209a1"
+    },
+    {
+      "path": "examples/demo_endgame/metrics.jsonl",
+      "bytes": 1186,
+      "sha256": "4ef37a2475692fc27b3f40952033feeeca0e06ed99f37ca56b338405c140c35a"
+    },
+    {
+      "path": "examples/demo_endgame/run_metadata.json",
+      "bytes": 789,
+      "sha256": "86a2b4656c00081c4769fab5dfdbad23fac928aa706680628d2355d778c5a1ce"
+    },
+    {
+      "path": "examples/demo_endgame/run_state.json",
+      "bytes": 1504,
+      "sha256": "2b69611d90f3bd27a4914206a00ba2216b0fd4dc6ff22f08243dc3edb31ae9c7"
+    },
+    {
+      "path": "models/neural_best.pt",
+      "bytes": 1368749,
+      "sha256": "fbb414cb5c77c14bd78453cebddd9b40557ba1c6f44c87e227a863fa72c9bd4d"
+    },
+    {
+      "path": "models/neural_last.pt",
+      "bytes": 1368749,
+      "sha256": "edb22200748afe29beec944d108068d3ea693abd62894caf92dae07615eff185"
+    },
+    {
+      "path": "models/train_history.jsonl",
+      "bytes": 2781,
+      "sha256": "657960d0a771a031267f0944a267843a0275d01bebb9843d9e9cb8cfa24a463b"
+    },
+    {
+      "path": "models/training_manifest.json",
+      "bytes": 783,
+      "sha256": "e397dc0e4e3bad45414bca70b201ad922ada06b7254d7b74e8df03c5372a3416"
+    },
+    {
+      "path": "neural/__init__.py",
+      "bytes": 55,
+      "sha256": "8153fe59a9a259aab43e026c1c042426a6e346476f6abaf29c803e2361eaef54"
+    },
+    {
+      "path": "neural/agent.py",
+      "bytes": 6353,
+      "sha256": "1c19da8d95dd185ac88598e546a5c32ad68d282ecf258db8dc69e06581d0cff8"
+    },
+    {
+      "path": "neural/checkpoint.py",
+      "bytes": 676,
+      "sha256": "6d81fe67c8f6c707017f9330e45324e1362b55952dc2f0f0b3ef5e5ced326d80"
+    },
+    {
+      "path": "neural/encoding.py",
+      "bytes": 3907,
+      "sha256": "a56fae4b305b64474df07f7b9221fdf8a687767aa04eb9021592c94000f9f0cb"
+    },
+    {
+      "path": "neural/evaluation.py",
+      "bytes": 3703,
+      "sha256": "367f58621566bef67997217f43bd469f271de4af71d1051d491a5192fc3b1997"
+    },
+    {
+      "path": "neural/league.py",
+      "bytes": 1633,
+      "sha256": "4f212f5c229b0e157f0fe4ce6d6b757d9dba71f1ef16e6342f745e121a3c7442"
+    },
+    {
+      "path": "neural/model.py",
+      "bytes": 1859,
+      "sha256": "40b9289c6cc1a92650c7df2610ac8352e6f4c0ddea5499521fee89f7f00f94dc"
+    },
+    {
+      "path": "neural/model_guard.py",
+      "bytes": 4388,
+      "sha256": "014a4df5cf92d7868b796f744eed7db5e8f8c6d2a8f4996f0bb91d51a4b99f7e"
+    },
+    {
+      "path": "neural/openings.py",
+      "bytes": 2046,
+      "sha256": "f859aa05d6fb6962b451431017e9a3ded9868109057190ccd16c31a401526119"
+    },
+    {
+      "path": "neural/quality.py",
+      "bytes": 3388,
+      "sha256": "be241eebd8155e6cafac177cae7e781795e19abb3137745d7feedeae1083b789"
+    },
+    {
+      "path": "neural/search.py",
+      "bytes": 4522,
+      "sha256": "a59a4c7660e5f60b1ce847c30aca29e362da288e1a605da904fec0a833793da9"
+    },
+    {
+      "path": "neural/selfplay.py",
+      "bytes": 53729,
+      "sha256": "65a1280ab26aface60c1d24ad2edccdf9f0c47890edb9c223e14419e3f6db2f8"
+    },
+    {
+      "path": "neural/storage.py",
+      "bytes": 9967,
+      "sha256": "537ce1f0d9dfbd9840d5756e2f97a0ecafc3ea1a494f40b788885966654004be"
+    },
+    {
+      "path": "neural/tournament.py",
+      "bytes": 4384,
+      "sha256": "a142b59529fd185c802b545da478ba25a0879eed24d11fbecb9f13ca4a1d2a5b"
+    },
+    {
+      "path": "neural/train.py",
+      "bytes": 9614,
+      "sha256": "3f09647dc2b72e3874b68d46bcb8d2bc48771fb3ec5280cd7c40a7bef73e307d"
+    },
+    {
+      "path": "output/teacher.jsonl",
+      "bytes": 1374243,
+      "sha256": "b2404a680ca1b13c1280e7e2fbab18e74ad87c098c9b9962c5fb7ada725bfb52"
+    },
+    {
+      "path": "requirements.txt",
+      "bytes": 141,
+      "sha256": "b86e5312f0f341e9085a19974a2e2a36f51cdd1efdeab557480e58bd66ee0ce5"
+    },
+    {
+      "path": "scripts/AUDIT_COLOR_WINDOWS.bat",
+      "bytes": 297,
+      "sha256": "9420a19c630f1cb2ab9e01f69dbf774ca0f7bd29f4912b5965a69a412e4a5df7"
+    },
+    {
+      "path": "scripts/BENCHMARK_HARDWARE_WINDOWS.bat",
+      "bytes": 499,
+      "sha256": "a5e125c711c56665754e5b5abfed183ca8485b6e2de2731dd18951f3c0e71d19"
+    },
+    {
+      "path": "scripts/CHECKPOINT_TOURNAMENT_WINDOWS.bat",
+      "bytes": 859,
+      "sha256": "69e5f0776a134ad86777d51890ad39c005e529ffc63112678bb4f1a1ffbda3dc"
+    },
+    {
+      "path": "scripts/COMPACT_RUNS_WINDOWS.bat",
+      "bytes": 1336,
+      "sha256": "57fac8c65853380632da2dbad83dde37dc54e1513b59d4c3d887dde01e6967f8"
+    },
+    {
+      "path": "scripts/EVALUATE_RUN_WINDOWS.bat",
+      "bytes": 1389,
+      "sha256": "31362abcf34e995d7c12e76e80ca2c61f8c14338d6dbbd7e57f2dc50b119ccfe"
+    },
+    {
+      "path": "scripts/NEURAL_SEARCH_WINDOWS.bat",
+      "bytes": 457,
+      "sha256": "c8de81915c016e7d16d24cbbef4c21def701c0db41edd3a78c57c6ebf913190a"
+    },
+    {
+      "path": "scripts/SELECT_PYTHON.bat",
+      "bytes": 655,
+      "sha256": "7425e7febd5f04afa53b08e3b5fe34a5cee10c7cf7720c45cde3e122bd3b9301"
+    },
+    {
+      "path": "scripts/VERIFY_PROGRESS_WINDOWS.bat",
+      "bytes": 309,
+      "sha256": "fc9547ffa4b61a69c9da020e1ff7c17345712cc8e6ffea27c36cecb45654d665"
+    },
+    {
+      "path": "scripts/benchmark_windows.bat",
+      "bytes": 302,
+      "sha256": "b3f6e9b6f1ecec78620eefb0d8cb44ab2dbd444d2725b334e9702ed47e59e016"
+    },
+    {
+      "path": "scripts/build_windows.bat",
+      "bytes": 526,
+      "sha256": "b3d70fd5e4ee9b6be0bdf0170415c584d8c73c938a3be64c3382f34c20162b2a"
+    },
+    {
+      "path": "scripts/neural_uci_windows.bat",
+      "bytes": 372,
+      "sha256": "f7451f7d3365e3e4d912457c77808d98769ba714518c8e6f35df7f4072c41ff5"
+    },
+    {
+      "path": "scripts/play_neural_windows.bat",
+      "bytes": 565,
+      "sha256": "072527386f4da966ef4291ba63c5bfbc248aaf42a6fad9e84c502868792756d1"
+    },
+    {
+      "path": "scripts/run_windows.bat",
+      "bytes": 253,
+      "sha256": "9f713d9d8043deea7092770c0a0a6f399ff7c42dc0153692aa83159391a05410"
+    },
+    {
+      "path": "scripts/setup_neural_windows.bat",
+      "bytes": 785,
+      "sha256": "1859321617d0b6bde7edab17f32acc91388f6f7fde6442d6c497cf50bc02e4a0"
+    },
+    {
+      "path": "scripts/test_neural_windows.bat",
+      "bytes": 270,
+      "sha256": "f3e1d962b0d698265a9381fc1905c32fb45eed78ceeff4e8945cde8afaf7a30a"
+    },
+    {
+      "path": "scripts/test_selfplay_windows.bat",
+      "bytes": 283,
+      "sha256": "188d4c305a20f9611fb674da1ea85daa7daccaa3e041396e363eeadd6df6bbff"
+    },
+    {
+      "path": "scripts/train_neural_windows.bat",
+      "bytes": 737,
+      "sha256": "1ffbeb720fc4ff43615e8f3111d4fe60cb8c616e8208c2ebc9f954b3fca65da8"
+    },
+    {
+      "path": "scripts/train_selfplay_windows.bat",
+      "bytes": 832,
+      "sha256": "3e1e805138b56336ec828fb6f1f014e0251df91412a70c1c252367a21a722761"
+    },
+    {
+      "path": "src/chess.cpp",
+      "bytes": 13970,
+      "sha256": "60d5bf542c9a42dd520e3c3ea7ba2f252b2f189fa086980101e97f8d02267167"
+    },
+    {
+      "path": "src/chess.hpp",
+      "bytes": 1774,
+      "sha256": "b23a3b2ed34728d761f2d0b3b778c37c606d208bb38b50c4aa9628d34dbd1c97"
+    },
+    {
+      "path": "src/main.cpp",
+      "bytes": 17834,
+      "sha256": "8be896e37686d4da520c4d77d85e717bd6ed80a010d1c990289635887383478c"
+    },
+    {
+      "path": "src/search.cpp",
+      "bytes": 2137,
+      "sha256": "f71d6788ce4a58da252122e1f882a9bf4f036a77bdb26a78bdf0c2f805695cc4"
+    },
+    {
+      "path": "src/search.hpp",
+      "bytes": 339,
+      "sha256": "e823dadafc06a9da6c4a48f474a76d683772c2ea1675b1829a4f828733de0d36"
+    },
+    {
+      "path": "tests/test_dashboard_file_access.py",
+      "bytes": 4533,
+      "sha256": "710932d2c1767aa157e739c81bdb4eac4757b68c04fa7020ffbf2701e7abcc77"
+    },
+    {
+      "path": "tests/test_neural.py",
+      "bytes": 4467,
+      "sha256": "62dddf245e76786cb1b6c477ce2d025b564e181e988217f3a09cc89bdc49fac1"
+    },
+    {
+      "path": "tests/test_selfplay.py",
+      "bytes": 6895,
+      "sha256": "5bb1c8eb7ff10566853cf3d2d0bf534f2419a10a3fd4999e0d02867000ea4eca"
+    },
+    {
+      "path": "tests/test_v04.py",
+      "bytes": 6031,
+      "sha256": "97cb43464834075df46555dc3dda2ae1816fb295b55b43914c439b5363ef7ca8"
+    },
+    {
+      "path": "tests/test_v05.py",
+      "bytes": 7048,
+      "sha256": "1ebbe0188a9eadada8b81ad7dc955a6333192744c7109d3aeb6629c2e8e1381e"
+    },
+    {
+      "path": "tests/test_v06.py",
+      "bytes": 13612,
+      "sha256": "8c85f4a8f0a73fc1791e25af91c4756deaed3dc1381444c6c1d9c758fc0f7e3a"
+    },
+    {
+      "path": "tests/test_v07.py",
+      "bytes": 9693,
+      "sha256": "f7e943ca20aab7c68b9bdaa0e51bb1ba6f26c1665f8bf1658bb2297c161e7020"
+    },
+    {
+      "path": "tests/tests.cpp",
+      "bytes": 5370,
+      "sha256": "7ae4e9a7ecafd13f65dfa29f06e0ce239d253aeed8038f41378b2ec8e2a8deda"
+    },
+    {
+      "path": "tools/audit_color.py",
+      "bytes": 2942,
+      "sha256": "08462dcfbc6e5768b02f33dfbf937b335d28cac44ba59d376f3a0e144442dd88"
+    },
+    {
+      "path": "tools/benchmark_runtime.py",
+      "bytes": 4568,
+      "sha256": "d9a8545f0a174a62eda51ad2457fd1bfd393eb5340981edb8a65bd65d951fca6"
+    },
+    {
+      "path": "tools/compact_runs.py",
+      "bytes": 1247,
+      "sha256": "7c32e3c0b34f5bdc34a50188df5d7f236f1b107577f9cdb162eedd092d3dcb00"
+    },
+    {
+      "path": "tools/dataset_stats.py",
+      "bytes": 1710,
+      "sha256": "44dc4092ca94cb8f05b7d971b2254cc3d436888652012524085bcde74195a8d0"
+    },
+    {
+      "path": "tools/migrate_current.py",
+      "bytes": 6712,
+      "sha256": "470739c56294de7419b87ed06d1695d42a64248d150dba15b5860aff4966a164"
+    },
+    {
+      "path": "tools/migrate_v03.py",
+      "bytes": 8267,
+      "sha256": "8b0d63626ff67dc1adf67d41631ef62e74a5202f0d1b51fa3ee0c5112ba46e91"
+    },
+    {
+      "path": "tools/verify_progress.py",
+      "bytes": 2863,
+      "sha256": "39ec3e4dd2b4e3955c87dc64f5e632218e41811af75548232fd3901cdb1664f8"
+    }
+  ]
+}

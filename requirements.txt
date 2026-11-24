@@ -1,0 +1,5 @@
+# CPU or GPU PyTorch 2.x. For CUDA use the wheel recommended on pytorch.org.
+numpy>=1.26,<3
+torch>=2.2,<3
+fastapi>=0.110,<1
+uvicorn>=0.29,<1

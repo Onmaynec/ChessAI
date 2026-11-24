@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "checkpoint": "neural_best.pt",
+  "feature_version": "planes19_actions73_v1",
+  "trained_epoch": 7,
+  "network": {
+    "channels": 32,
+    "blocks": 2
+  },
+  "parameters": 111258,
+  "data_samples": 4000,
+  "teacher": "weak built-in alpha-beta depth 2",
+  "learning": "supervised policy imitation and heuristic value regression; NOT RL",
+  "train_examples": 3600,
+  "validation_examples": 400,
+  "validation_metrics": {
+    "loss": 2.26673,
+    "policy_ce": 2.183534,
+    "value_mse": 0.332787,
+    "value_mae": 0.479925,
+    "policy_top1_legal": 0.415
+  },
+  "training_device": "CPU in Linux test environment",
+  "training_seed": 42,
+  "elo": "not measured",
+  "license": "Source code released for local experimentation; no formal license grant specified"
+}

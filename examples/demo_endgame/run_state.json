@@ -1,0 +1,69 @@
+{
+  "status": "completed",
+  "started_at": "2026-11-23T01:31:25+00:00",
+  "updated_at": "2026-11-23T01:31:25+00:00",
+  "iteration": 2,
+  "target_iteration": 2,
+  "iteration_games": 4,
+  "iteration_target": 4,
+  "device": "cpu",
+  "counters": {
+    "games": 8,
+    "finished": 8,
+    "unfinished": 0,
+    "white_wins": 0,
+    "black_wins": 0,
+    "draws": 8,
+    "plies": 216,
+    "samples": 216
+  },
+  "note": "Model plays both colors; games at the ply limit are NOT treated as draws.",
+  "phase": "idle",
+  "last_metrics": {
+    "iteration": 2,
+    "at": "2026-11-23T01:31:25+00:00",
+    "elapsed_s": 0.175,
+    "games": 4,
+    "plies": 126,
+    "games_per_s": 22.8893,
+    "plies_per_s": 721.01,
+    "results": {
+      "white_wins": 0,
+      "black_wins": 0,
+      "draws": 4,
+      "unfinished": 0
+    },
+    "samples": 126,
+    "train": {
+      "samples": 126,
+      "updates": 4,
+      "total_loss": 0.33808,
+      "policy_loss": 0.330219,
+      "value_mse": 0.033321,
+      "entropy": 1.759992,
+      "advantage_abs": 0.817884
+    },
+    "arena": {
+      "completed": 0,
+      "unfinished": 0,
+      "wins": 0,
+      "losses": 0,
+      "draws": 0,
+      "score": null,
+      "played": 0
+    },
+    "cumulative": {
+      "games": 8,
+      "finished": 8,
+      "unfinished": 0,
+      "white_wins": 0,
+      "black_wins": 0,
+      "draws": 8,
+      "plies": 216,
+      "samples": 216
+    },
+    "rollout_entropy": 1.814
+  },
+  "elapsed_session_s": 0.309,
+  "finished_at": "2026-11-23T01:31:25+00:00"
+}
