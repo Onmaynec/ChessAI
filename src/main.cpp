@@ -32,19 +32,20 @@ int integer(const std::string& s,int min,int max,const std::string& label) {
     return n;
 }
 void help(){
-    std::cout << "Chess AI Core v0.3.0 (neural self-play training in Python)\n\n"
+    std::cout << "Chess AI Core v0.9.2 (Deep Search; neural training in Python)\n\n"
               << "  chessai inspect [FEN]                 Board and legal moves\n"
               << "  chessai perft DEPTH [FEN]            Verify legal move generator\n"
               << "  chessai divide DEPTH [FEN]           Per-root-move perft counts\n"
               << "  chessai bench                       Reference perft + performance\n"
+              << "  chessai search-bench DEPTH [FEN]    Baseline vs Deep Search at equal nominal depth\n"
               << "  chessai selfplay GAMES THREADS FILE [MAX_PLIES] [SEED]\n"
               << "                                      Generate JSONL game records\n"
               << "  chessai teacherdata SAMPLES DEPTH FILE [SEED]\n"
               << "                                      Export supervised positions\n"
               << "  chessai legal-json [FEN]            FEN and legal UCI actions as JSON\n"
               << "  chessai apply MOVE [FEN]            Apply a legal UCI move; print FEN\n"
-              << "  chessai play [DEPTH]                Human vs simple baseline\n"
-              << "  chessai uci                         Minimal UCI chess engine\n"
+              << "  chessai play [DEPTH]                Human vs deep search\n"
+              << "  chessai uci                         Deep Search UCI chess engine\n"
               << "  chessai bridge                      Persistent JSONL multi-game training interface\n";
 }
 void benchmark() {
@@ -359,6 +360,24 @@ int main(int argc,char** argv){
         std::vector<std::string> a(argv+1,argv+argc);
         if(a.empty()||a[0]=="--help"||a[0]=="help"){help();return 0;}
         if(a[0]=="bench"){benchmark();return 0;}
+        if(a[0]=="search-bench"){
+            int depth=a.size()>1?integer(a[1],1,6,"depth"):3;
+            Position p=parse_fen(a.size()>2?join(a,2):std::string(START_FEN));
+            SearchLimits limits;limits.depth=depth;
+            auto begin=Clock::now();
+            auto baseline=search_baseline(p,depth);
+            auto baseline_ms=std::chrono::duration<double,std::milli>(Clock::now()-begin).count();
+            auto improved=search_deep(p,limits);
+            std::cout<<"FEN: "<<to_fen(p)<<"\n"
+                     <<"Baseline depth "<<depth<<" best "<<(baseline.best?uci(*baseline.best):"0000")
+                     <<" cp "<<baseline.score_cp<<" nodes "<<baseline.nodes<<" ms "<<baseline_ms<<"\n"
+                     <<"Deep completed depth "<<improved.completed_depth<<" best "<<(improved.best?uci(*improved.best):"0000")
+                     <<" cp "<<improved.score_cp<<" nodes "<<improved.nodes<<" ms "<<improved.elapsed_ms
+                     <<" qnodes "<<improved.qnodes<<" tthits "<<improved.tt_hits<<"\nPV:";
+            for(const auto& move:improved.pv)std::cout<<' '<<uci(move);
+            std::cout<<"\nDifferent evaluation and quiescence: node counts and cp are not equal-work or strength guarantees.\n";
+            return 0;
+        }
         if(a[0]=="uci"){uci_session();return 0;}
         if(a[0]=="bridge"){bridge();return 0;}
         if(a[0]=="teacherdata") {

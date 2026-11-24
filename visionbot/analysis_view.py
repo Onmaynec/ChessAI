@@ -77,9 +77,11 @@ def report_sections(event, en=False):
             if isinstance(trap,dict) and uci(trap.get('bait')):
                 traps.append(f'{trap["bait"]}: {number(trap.get("punishment_cp"),"+.0f")} cp')
         sections.append(('Possible traps (conditional)' if en else 'Возможные ловушки (условно)','\n'.join(traps) or ('None reported.' if en else 'Не обнаружены в отчёте.')))
-    sections.append(('Illustrative continuation' if en else 'Возможное продолжение',' → '.join(line_moves(event)) or '—'))
+    sections.append((('Searched principal variation' if en else 'Основная линия поиска') if d.get('line_kind')=='searched_pv' else ('Illustrative continuation' if en else 'Возможное продолжение'),' → '.join(line_moves(event)) or '—'))
+    if d.get('search_nodes') is not None:
+        sections.append(('Search counters' if en else 'Счётчики поиска',f"Nodes: {d['search_nodes']} · Q: {d.get('search_qnodes')} · TT: {d.get('search_tt_hits')}"))
     sections.append(('Opponent mistakes' if en else 'Ошибки соперника','Not classified: no comparable before/after opponent search.' if en else 'Не классифицированы: нет сопоставимых оценок до и после хода соперника.'))
-    sections.append(('Interpretation' if en else 'Ограничения','Engine telemetry, not internal neural reasoning. Policy is not win probability; illustrative line is not a guaranteed principal variation.' if en else 'Пояснения из телеметрии, не внутренние мысли сети. Policy не вероятность победы; линия примерная, не гарантированный главный вариант.'))
+    sections.append(('Interpretation' if en else 'Ограничения','Engine telemetry, not internal neural reasoning. Policy is not win probability; even a searched PV is conditional on the search budget.' if en else 'Пояснения из телеметрии, не внутренние мысли сети. Policy не вероятность победы; даже основная линия зависит от бюджета поиска.'))
     return sections
 
 def geometry_parts(value):

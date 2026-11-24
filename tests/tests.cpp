@@ -93,6 +93,14 @@ int main(){
         check(forced.best.has_value()&&forced.score_cp==29999,"mate in one score");
         auto mpos=make_move(mate_one,*forced.best);
         check(outcome(mpos,{}).reason=="checkmate","mate in one found");
+        auto mate_two=parse_fen("k7/8/8/K7/8/8/8/3Q4 w - - 0 1");
+        auto mate_limits=limits;mate_limits.depth=3;
+        auto forced_two=search_deep(mate_two,mate_limits);
+        check(forced_two.best.has_value()&&forced_two.score_cp==29997,"mate in two score");
+        auto poisoned=parse_fen("3r2k1/8/8/3p4/8/8/8/3Q2K1 w - - 0 1");
+        auto one_ply=limits;one_ply.depth=1;
+        auto safe=search_deep(poisoned,one_ply);
+        check(safe.best.has_value()&&uci(*safe.best)!="d1d5","quiescence avoids poisoned pawn");
         auto budget=limits;budget.depth=8;budget.nodes=1;
         auto stopped=search_deep(root,budget);
         check(stopped.stopped&&stopped.nodes<=1&&stopped.completed_depth==0&&stopped.best.has_value(),"legal emergency move at node limit");

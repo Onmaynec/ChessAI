@@ -66,7 +66,9 @@ def formatted_analysis(event: dict) -> list[str]:
         f"Оценка движка: {cp:+d} cp" if isinstance(cp,int) else 'Оценка движка: нет',
         f"Оценка нейросети (value): {event.get('value',0):+.3f}; вероятность выбранного: {d.get('policy','?')}",
         f"Ожидаемый ответ противника: {d.get('expected_reply') or 'нет (конец партии)'}",
-        'Линия возможного продолжения: ' + (' '.join(d.get('illustrative_line',[])) or '?')])
+        ('Основная линия поиска: ' if d.get('line_kind')=='searched_pv' else 'Линия возможного продолжения: ') + (' '.join(d.get('illustrative_line',[])) or '?')])
+    if d.get('search_nodes') is not None:
+        res.append(f"Узлы: {d['search_nodes']} · Q: {d.get('search_qnodes')} · TT: {d.get('search_tt_hits')}")
     if d.get('opening_name'):
         res.append('Дебютная схема: '+d['opening_name'])
     if d.get('opening_plan'):

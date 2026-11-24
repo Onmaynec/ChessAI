@@ -27,9 +27,16 @@ uint64_t mix(uint64_t x){
 // Zobrist XOR of fixed pseudo-random piece/square and rights keys.
 // repetition_key canonicalizes uncapturable en-passant rights.
 uint64_t zobrist(const std::string& key){
+    static const auto keys=[] {
+        std::array<std::array<uint64_t,256>,67> values{};
+        for(size_t i=0;i<values.size();++i)
+            for(size_t j=0;j<values[i].size();++j)
+                values[i][j]=mix(0x43484553534149ULL+i*256+j);
+        return values;
+    }();
+    if(key.size()!=keys.size())throw std::invalid_argument("Invalid repetition key size");
     uint64_t h=0;
-    for(size_t i=0;i<key.size();++i)
-        h^=mix(0x43484553534149ULL+i*256+static_cast<unsigned char>(key[i]));
+    for(size_t i=0;i<key.size();++i)h^=keys[i][static_cast<unsigned char>(key[i])];
     return h;
 }
 

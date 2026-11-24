@@ -465,7 +465,7 @@ class OverlayWindow:
                 sections=report_sections(event,en)
             else:
                 sections=report_sections(event,en)
-                sections=[section for i,section in enumerate(sections) if i in (0,1,3) or 'continuation' in section[0].lower() or 'продолжение' in section[0].lower()]
+                sections=[section for i,section in enumerate(sections) if i in (0,1,3) or 'continuation' in section[0].lower() or 'продолжение' in section[0].lower() or 'линия поиска' in section[0].lower() or 'principal variation' in section[0].lower()]
                 d=(event or {}).get('details',{})
                 rows=[]
                 for c in d.get('candidates') or []:

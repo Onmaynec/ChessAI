@@ -57,6 +57,11 @@ class UciAnswer:
     move: str | None
     score_cp: int
     depth: int
+    pv: tuple[str, ...] = ()
+    nodes: int | None = None
+    qnodes: int | None = None
+    tt_hits: int | None = None
+    elapsed_ms: int | None = None
 
 
 class SearchUnavailable(RuntimeError):
@@ -68,7 +73,7 @@ def evaluate_fens(engine: Path, positions: list[str], *, depth: int = 4,
     """Batch searches through the existing compiled C++ UCI executable.
 
     A *single* subprocess handles all positions serially, avoiding 20-40
-    Windows process launches for one chess move. No C++ recompilation needed.
+    Windows process launches for one chess move. Rebuild the engine after source updates.
     The reported score is centipawns from the FEN side-to-move perspective.
     """
     if not 1 <= depth <= 6:
@@ -94,22 +99,40 @@ def evaluate_fens(engine: Path, positions: list[str], *, depth: int = 4,
         raise SearchUnavailable(f'C++ UCI tactical search failed: {exc}') from exc
     if result.returncode:
         raise SearchUnavailable(f'C++ UCI search returned {result.returncode}: {result.stderr[-200:]}')
+    return parse_uci_answers(result.stdout, len(positions), depth)
+
+
+def parse_uci_answers(stdout: str, expected: int, requested_depth: int) -> list[UciAnswer]:
+    """Read final info per position, keeping old cp-only UCI output compatible."""
     answers = []
-    depth_seen = 0
-    score_seen: int | None = None
-    for line in result.stdout.splitlines():
-        info = re.search(r'\binfo depth (\d+) score cp (-?\d+)\b', line)
+    pending = None
+    for line in stdout.splitlines():
+        info = re.match(r'^info depth (\d+) score cp (-?\d+)\b', line)
         if info:
-            depth_seen, score_seen = int(info.group(1)), int(info.group(2))
+            fields = {}
+            for field in ('nodes', 'qnodes', 'tthits', 'time'):
+                match = re.search(r'\b' + field + r' (\d+)\b', line)
+                fields[field] = int(match.group(1)) if match else None
+            variation = re.search(r'\bpv (.+)$', line)
+            pv = tuple(variation.group(1).split()) if variation else ()
+            if any(not re.fullmatch(r'[a-h][1-8][a-h][1-8][qrbn]?', move) for move in pv):
+                raise SearchUnavailable('Invalid UCI principal variation')
+            pending = UciAnswer(None, int(info.group(2)), int(info.group(1)), pv,
+                                fields['nodes'], fields['qnodes'], fields['tthits'], fields['time'])
         best = re.match(r'^bestmove\s+(\S+)', line)
         if best:
-            if score_seen is None:
+            if pending is None:
                 raise SearchUnavailable('C++ UCI response had no centipawn score')
-            answers.append(UciAnswer(None if best.group(1) == '0000' else best.group(1),
-                                     score_seen, depth_seen))
-            depth_seen, score_seen = 0, None
-    if len(answers) != len(positions):
-        raise SearchUnavailable(f'C++ search returned {len(answers)} answers for {len(positions)} positions')
+            move = None if best.group(1) == '0000' else best.group(1)
+            if pending.pv and pending.pv[0] != move:
+                raise SearchUnavailable('C++ PV does not start with bestmove')
+            if move and pending.depth < requested_depth and abs(pending.score_cp) < 29000:
+                raise SearchUnavailable('C++ search did not complete requested depth')
+            answers.append(UciAnswer(move, pending.score_cp, pending.depth, pending.pv,
+                                     pending.nodes, pending.qnodes, pending.tt_hits, pending.elapsed_ms))
+            pending = None
+    if len(answers) != expected:
+        raise SearchUnavailable(f'C++ search returned {len(answers)} answers for {expected} positions')
     return answers
 
 
@@ -331,6 +354,8 @@ def choose_move(model, state: dict, bridge, engine: Path, *,
 
     scores = {}
     answers = {}
+    searched = {}
+    search_records = list(analysis)
     itr = iter(analysis)
     for move in legal:
         child = children[move]
@@ -341,6 +366,7 @@ def choose_move(model, state: dict, bridge, engine: Path, *,
             result = next(itr)
             scores[move] = -result.score_cp
             answers[move] = result.move
+            searched[move] = result
     shallow_scores = dict(scores)
     deep_used = False
     deep_reason = None
@@ -366,6 +392,8 @@ def choose_move(model, state: dict, bridge, engine: Path, *,
                 for m,result in zip(deep_moves,results):
                     scores[m] = -result.score_cp
                     answers[m] = result.move
+                    searched[m] = result
+                search_records.extend(results)
                 deep_used = True
             except SearchUnavailable as exc:
                 deep_reason = str(exc)
@@ -408,7 +436,9 @@ def choose_move(model, state: dict, bridge, engine: Path, *,
     selected_move = chosen[3]
     other_values = [scores[m] for m in ranked_moves if m != selected_move]
     reply = answers[selected_move]
-    line = _illustrative_line(engine,children[selected_move]['fen'],selected_move,reply)
+    chosen_search = searched.get(selected_move)
+    engine_pv = [selected_move, *chosen_search.pv] if chosen_search and chosen_search.pv else ([selected_move] if children[selected_move]['finished'] else [])
+    line = engine_pv[:12] if engine_pv else _illustrative_line(engine,children[selected_move]['fen'],selected_move,reply)
     traps = (_trap_on_recapture(engine,children[selected_move],selected_move,reply,chosen[1])
              if deep_used else [])
     candidates = sorted(ranked_moves,key=lambda m:(-scores[m],-priors[m],m))[:6]
@@ -426,6 +456,11 @@ def choose_move(model, state: dict, bridge, engine: Path, *,
         'repetition_penalty_cp':chosen[4],
         'value':value, 'policy':round(priors[selected_move],5),
         'expected_reply':reply, 'illustrative_line':line,
+        'engine_pv':engine_pv, 'line_kind':'searched_pv' if engine_pv else 'illustrative',
+        'chosen_completed_depth':chosen_search.depth+1 if chosen_search else 1,
+        'search_nodes':sum(r.nodes for r in search_records) if all(r.nodes is not None for r in search_records) else None,
+        'search_qnodes':sum(r.qnodes for r in search_records) if all(r.qnodes is not None for r in search_records) else None,
+        'search_tt_hits':sum(r.tt_hits for r in search_records) if all(r.tt_hits is not None for r in search_records) else None,
         'motifs':_motifs(state['fen'],selected_move,chosen[1],max(other_values) if other_values else None,
                          opening_name if selected_move==preferred else None)
                   + (['Возможная ловушка при ошибочном взятии — НЕ форсированная комбинация'] if traps else []),
