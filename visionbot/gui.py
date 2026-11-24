@@ -197,7 +197,7 @@ class App(Workspace):
                 title=title.casefold()
                 # Outside our own panel, require a visible computer-game title.
                 computer='chess.com' in title and any(word in title for word in ('computer','bot','компьютер','бот'))
-                if self.root.state() in ('normal','zoomed') and (our_panel_is_foreground() or computer) and not self.root.grab_current():
+                if (self.root.state() in ('normal','zoomed') or 'control' in self.overlays.windows) and not self.overlays._capturing and (our_panel_is_foreground() or computer) and not self.root.grab_current():
                     self.launch(attach_any_position=action==2)
         finally:
             if not self._closing:self.root.after(40,self.poll_shortcuts)
@@ -212,6 +212,7 @@ class App(Workspace):
 
     def _launch(self, attach_any_position: bool = False):
         if self.worker and self.worker.is_alive():return
+        if self.overlays._capturing:return
         if not self.consent.get():messagebox.showwarning('Режим','Подтверди, что играешь против компьютерного бота.');return
         if not self.rect:messagebox.showwarning('Калибровка','Сначала выдели шахматную доску.');return
         ck=self.run/'checkpoints'/self.checkpoint.get()
@@ -251,7 +252,7 @@ class App(Workspace):
             ui=(self.root.winfo_rootx(),self.root.winfo_rooty(),
                 self.root.winfo_width(),self.root.winfo_height())
             x,y,size=self.rect
-            if self.topmost.get() and rectangles_overlap(ui,(x,y,size,size)):
+            if self.root.winfo_ismapped() and self.topmost.get() and rectangles_overlap(ui,(x,y,size,size)):
                 messagebox.showwarning('Панель перекрывает доску',
                     'Перетащи окно Vision Bot в сторону от шахматной доски. '
                     'Иначе компьютерное зрение будет видеть само окно вместо фигур.')

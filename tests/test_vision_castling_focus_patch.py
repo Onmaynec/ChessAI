@@ -132,6 +132,7 @@ def test_focus_handoff_launches_correct_window_for_both_colors(monkeypatch, tmp_
         app.path = root / 'config' / 'vision_bot.json'
         app.root = Root()
         app.logline = lambda msg: None
+        app.overlays=SimpleNamespace(_capturing=False)
         app.prepare_launch_layout=lambda:True
         app.reset_analysis=lambda:None
         app.refresh_workspace=lambda:None
@@ -161,7 +162,8 @@ def test_focus_activation_failure_does_not_click(monkeypatch, tmp_path):
     app.checkpoint=Var('latest.pt');app.engine=tmp_path/'engine.exe';app.run=tmp_path
     app.ev=Event();app.color=Var('white');app.path=tmp_path/'vision_bot.json'
     app.root=Root();app.logline=lambda *_args:None
-    app.prepare_launch_layout=lambda:True
+    app.overlays=SimpleNamespace(_capturing=False)
+        app.prepare_launch_layout=lambda:True
     app.reset_analysis=lambda:None
     app.refresh_workspace=lambda:None
     app.analysis_mode=Var('Глубокий')

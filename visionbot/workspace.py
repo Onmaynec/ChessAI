@@ -413,10 +413,17 @@ class Workspace:
         self.button(row,'Минимум','Minimal',lambda:self.overlays.apply_preset('minimal'),width=75).pack(side='left',expand=True,padx=2)
         self.button(row,'Анализ','Review',lambda:self.overlays.apply_preset('review'),width=75).pack(side='left',expand=True,padx=2)
         self.button(row,'Все','All',lambda:self.overlays.apply_preset('full'),width=65).pack(side='left',expand=True,padx=2)
+        self.button(c,'Разместить окна','Arrange windows',self.overlays.arrange).pack(fill='x',padx=14,pady=3)
+        self.button(c,'Скрыть основную панель','Hide main panel',self.hide_main_for_overlays).pack(fill='x',padx=14,pady=3)
         self.button(c,'Скрыть все оверлеи','Close all overlays',self.overlays.close_all).pack(fill='x',padx=14,pady=3)
         self.button(c,'Сбросить расположение','Reset layout',self.overlays.reset).pack(fill='x',padx=14,pady=3)
         self.button(c,'Компактный вид основной панели','Compact main panel',self.toggle_overlay).pack(fill='x',padx=14,pady=3)
         self.button(c,'Сохранить настройки','Save settings',self.save_workspace_settings).pack(fill='x',padx=14,pady=(4,12))
+
+    def hide_main_for_overlays(self):
+        self.overlays.open('control')
+        if 'control' in self.overlays.windows:
+            self.root.iconify()
 
     def build_overlay(self):
         ctk=self.ctk
@@ -768,6 +775,7 @@ class Workspace:
         """Use physical coordinates for board safety and logical Tk sizes."""
         r=self.root;r.update_idletasks()
         if not self.overlays.prepare_launch():return False
+        if not r.winfo_ismapped():return True
         scale=self.window_scale()
         width=round(r.winfo_width()/scale)
         height=round(r.winfo_height()/scale)

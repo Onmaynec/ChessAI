@@ -517,7 +517,7 @@ class VisionAutoplay:
                         if store is not None:
                             store.commit(sess)
                         self.report(f'Быстрый ответ компьютерного бота: {fast_reply}; '
-                                    'оба хода подтверждены одним снимком')
+                                    f'оба хода подтверждены одним снимком · FEN {sess.state["fen"]}')
                 else:
                     self.report('Ожидаю ход компьютерного бота… · очередь: '+sess.state['fen'].split()[1])
                     move=self._wait_one(recognizer,sess,sess.state['legal_moves'],160)

@@ -17,7 +17,7 @@ GREEN='#52d79a'
 RED='#ff8585'
 BORDER='#303341'
 NAMES={
-    'control':('Управление','Control',(360,335)),
+    'control':('Управление','Control',(360,370)),
     'log':('Журнал сессии','Session log',(470,310)),
     'analysis':('Анализ партии','Game analysis',(420,350)),
     'board':('Доска и варианты','Board and lines',(350,425)),
@@ -30,7 +30,7 @@ class OverlayManager:
         self.app=app;self.root=app.root;self.ctk=app.ctk
         self.path=app.path.with_name('vision_overlays.json')
         self.windows={};self.preferences={}
-        self._hidden=[];self._closing=False
+        self._hidden=[];self._closing=False;self._capturing=False
         try:
             data=json.loads(self.path.read_text(encoding='utf-8'))
             if isinstance(data,dict):
@@ -42,6 +42,7 @@ class OverlayManager:
     def name(self,key):return self.tr(*NAMES[key][:2])
 
     def open(self,key):
+        if self._closing or self._capturing:return
         if key in self.windows:
             w=self.windows[key]
             w.win.deiconify();w.win.lift();return
@@ -61,7 +62,7 @@ class OverlayManager:
         w=self.windows.pop(key,None)
         if w:
             self.preferences[key]=w.snapshot()
-            w.win.destroy()
+            w.dispose()
             self.save()
 
     def close_all(self):
@@ -70,7 +71,7 @@ class OverlayManager:
     def shutdown(self):
         self._closing=True
         self.save()
-        for w in list(self.windows.values()):w.win.destroy()
+        for w in list(self.windows.values()):w.dispose()
         self.windows.clear()
 
     def save(self):
@@ -92,6 +93,27 @@ class OverlayManager:
         for key in {'minimal':('control',),'review':('board','analysis','console'),
                     'full':tuple(NAMES)}.get(preset,()):
             self.open(key)
+        self.arrange()
+
+    def arrange(self):
+        # Try a non-overlapping tile layout; when space is exhausted keep windows movable.
+        used=[]
+        rect=self.rect()
+        if rect:used.append((*rect[:2],rect[2],rect[2]))
+        if self.root.winfo_ismapped():
+            used.append((self.root.winfo_rootx(),self.root.winfo_rooty(),self.root.winfo_width(),self.root.winfo_height()))
+        for overlay in self.windows.values():
+            win=overlay.win;win.update_idletasks()
+            width,height=win.winfo_width()+16,win.winfo_height()+42
+            sw,sh=win.winfo_screenwidth(),win.winfo_screenheight()
+            positions=[(x,y) for y in range(8,max(9,sh-height+1),32) for x in range(8,max(9,sw-width+1),32)]
+            positions.extend((max(0,sw-width),y) for y in range(8,max(9,sh-height+1),32))
+            found=next(((x,y) for x,y in positions if x+width<=sw and y+height<=sh and not any(rectangles_overlap((x,y,width,height),r) for r in used)),None)
+            if found:
+                win.geometry(f'+{found[0]}+{found[1]}');used.append((*found,width,height))
+            else:
+                used.append(overlay.bounds())
+        self.save()
 
     def rect(self):
         return getattr(self.app.bot,'rect',None) or self.app.rect
@@ -123,13 +145,14 @@ class OverlayManager:
         return all(self.place(w) for w in self.windows.values() if w.win.winfo_ismapped())
 
     def hide_for_capture(self):
+        self._capturing=True
         self._hidden=[k for k,w in self.windows.items() if w.win.winfo_ismapped()]
         for key in self._hidden:self.windows[key].win.withdraw()
 
     def restore_after_capture(self):
         for key in self._hidden:
             if key in self.windows:self.windows[key].win.deiconify()
-        self._hidden=[]
+        self._hidden=[];self._capturing=False
 
     def refresh(self):
         for w in tuple(self.windows.values()):
@@ -153,12 +176,12 @@ class OverlayWindow:
         cfg=manager.preferences.get(key,{})
         self.alpha=tk.DoubleVar(master=self.win,value=self.alpha_value(cfg.get('opacity',self.app.opacity.get())))
         self.top=tk.BooleanVar(master=self.win,value=bool(cfg.get('topmost',True)))
-        self.signature=None;self._resize_job=None;self._board_signature=None
+        self.signature=object();self._resize_job=None;self._board_signature=None
         self.line_index=0;self._event_id=None
         self.board_mode=tk.StringVar(master=self.win,value='analysis')
         self.layer=tk.StringVar(master=self.win,value='all')
         self.log_filter=tk.StringVar(master=self.win,value='all')
-        self.win.minsize(280,240 if key!='board' else 280)
+        self.win.minsize(310 if key=='control' else 280,320 if key=='control' else 280 if key=='board' else 210)
         default_w,default_h=NAMES[key][2]
         scale=self.scale()
         sw,sh=self.win.winfo_screenwidth(),self.win.winfo_screenheight()
@@ -177,7 +200,10 @@ class OverlayWindow:
         self.win.attributes('-alpha',self.alpha.get());self.win.attributes('-topmost',self.top.get())
         header=self.ctk.CTkFrame(self.win,fg_color=PANEL,corner_radius=9,border_width=1,border_color=BORDER)
         header.pack(fill='x',padx=8,pady=(8,4))
-        self.label(header,manager.name(key),size=15,bold=True).pack(side='left',padx=9,pady=5)
+        grip=self.label(header,manager.name(key),size=15,bold=True)
+        grip.pack(side='left',padx=9,pady=5)
+        grip.bind('<ButtonPress-1>',self.drag_start)
+        grip.bind('<B1-Motion>',self.drag_move)
         self.button(header,'×',lambda:manager.close(key),width=30).pack(side='right',padx=5)
         prefs=self.ctk.CTkFrame(self.win,fg_color='transparent')
         prefs.pack(fill='x',padx=10,pady=(0,4))
@@ -210,6 +236,24 @@ class OverlayWindow:
     def change_alpha(self,value):self.win.attributes('-alpha',self.alpha_value(value))
 
     def change_top(self):self.win.attributes('-topmost',self.top.get())
+
+    def dispose(self):
+        if self._resize_job is not None:
+            self.win.after_cancel(self._resize_job);self._resize_job=None
+        self.win.destroy()
+
+    def drag_start(self,event):
+        self._drag=(event.x_root-self.win.winfo_x(),event.y_root-self.win.winfo_y())
+
+    def drag_move(self,event):
+        if not hasattr(self,'_drag'):return
+        w=self.win
+        x=max(0,min(event.x_root-self._drag[0],w.winfo_screenwidth()-w.winfo_width()-16))
+        y=max(0,min(event.y_root-self._drag[1],w.winfo_screenheight()-w.winfo_height()-42))
+        rect=self.manager.rect()
+        if self.app.worker and self.app.worker.is_alive() and rect:
+            if rectangles_overlap((x,y,w.winfo_width()+16,w.winfo_height()+42),(*rect[:2],rect[2],rect[2])):return
+        w.geometry(f'+{x}+{y}')
 
     def resize(self,event):
         if event.widget is not self.win or self.key!='board':return
@@ -314,7 +358,7 @@ class OverlayWindow:
         self.next=self.button(r,'›',lambda:self.step(1),width=35);self.next.pack(side='right')
         self.step_text=tk.StringVar(master=self.win,value='—')
         self.label(r,variable=self.step_text,size=11).pack(side='left',expand=True)
-        self.label(self.body,self.tr('Зелёный: выбор · фиолетовый: варианты','Green: chosen · purple: alternatives'),size=10,color=MUTED).pack(pady=(0,4))
+        self.label(self.body,self.tr('Выбор · варианты · линия · ловушка*','Chosen · alternatives · line · trap*'),size=10,color=MUTED).pack(pady=(0,4))
 
     def set_board_mode(self,value):
         self.board_mode.set(value);self.line_index=0;self.draw_board()
@@ -365,14 +409,18 @@ class OverlayWindow:
         if ranks and not current:
             if index==0:markings=arrows(event,self.layer.get()=='all')
             elif index<len(moves):markings=[(moves[index],'line')]
+            if index==1 and self.layer.get()=='all':
+                from .analysis_view import uci
+                for trap in (event.get('details',{}).get('possible_traps') or [])[:2]:
+                    if isinstance(trap,dict) and uci(trap.get('bait')):markings.append((trap['bait'],'trap'))
         for move,kind in markings:
             x1,y1=square_xy(move[:2],black);x2,y2=square_xy(move[2:4],black)
-            color=GREEN if kind=='chosen' else '#a78bfa' if kind=='alternative' else '#e9b963'
+            color=GREEN if kind=='chosen' else '#a78bfa' if kind=='alternative' else RED if kind=='trap' else '#e9b963'
             self.canvas.create_rectangle(ox+x2*s+2,oy+y2*s+2,ox+(x2+1)*s-2,oy+(y2+1)*s-2,outline=color,width=2)
             self.canvas.create_line(ox+(x1+.5)*s,oy+(y1+.5)*s,ox+(x2+.5)*s,oy+(y2+.5)*s,fill=color,
-                                    width=max(2,int(s*.10)),arrow='last',arrowshape=(max(6,int(s*.30)),max(7,int(s*.36)),max(3,int(s*.16))))
+                                    width=max(2,int(s*.10)),dash=(4,3) if kind=='trap' else (),arrow='last',arrowshape=(max(6,int(s*.30)),max(7,int(s*.36)),max(3,int(s*.16))))
         if not ranks:self.canvas.create_text(width/2,height/2,text=self.tr('Нет позиции','No position'),fill=TEXT,font=('Segoe UI',12),tags='empty')
-        self.caption.set(self.tr('Последняя подтверждённая позиция','Last reported position') if current else self.tr('Снимок расчёта · примерная линия','Analysis snapshot · illustrative line'))
+        self.caption.set(self.tr('Последняя позиция из событий','Last reported position') if current else self.tr('Снимок расчёта · ловушки условны','Analysis snapshot · traps conditional'))
         self.step_text.set('—' if current else f'{index}/{len(moves)}'+(' · '+moves[index-1] if index else ''))
         self.prev.configure(state='normal' if index>0 and not current else 'disabled')
         self.next.configure(state='normal' if index<len(moves) and not current else 'disabled')
@@ -397,9 +445,16 @@ class OverlayWindow:
             mode=self.log_filter.get()
             sig=(items,mode)
             if sig==self.signature:return
+            previous=self.signature
             self.signature=sig
             old=self.output.yview()[0]
-            self.set_text([(tag,line) for tag,line in items if mode in ('all',tag)])
+            # Append only when old buffer is an unchanged prefix; rebuild on rollover/filter.
+            if isinstance(previous,tuple) and len(previous)==2 and previous[1]==mode and items[:len(previous[0])]==previous[0]:
+                self.output.configure(state='normal')
+                for tag,line in items[len(previous[0]):]:
+                    if mode in ('all',tag):self.output.insert('end',line,tag)
+                self.output.configure(state='disabled')
+            else:self.set_text([(tag,line) for tag,line in items if mode in ('all',tag)])
             if self.follow.get():self.output.see('end')
             else:self.output.yview_moveto(old)
         else:
