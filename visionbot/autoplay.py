@@ -448,8 +448,9 @@ class VisionAutoplay:
                     self.report('Внимание: прошлый клик не подтверждён; убедись, что на сайте не выделена фигура')
                 # Recovery snapshots have hash filenames; retain logical agent style.
                 from neural.agent_profiles import profile_for_filename
-                sess.agent_label=data.get('original_checkpoint','latest.pt')
-                sess.agent_profile=profile_for_filename(sess.agent_label)
+                if not self.external_authorized:
+                    sess.agent_label=data.get('original_checkpoint','latest.pt')
+                    sess.agent_profile=profile_for_filename(sess.agent_label)
                 self.report('Агент восстановлен из проверенного снимка партии')
             else:
                 # New game is allowed only after the starting-board visual check.

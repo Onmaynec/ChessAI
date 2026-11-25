@@ -66,9 +66,11 @@ class App(Workspace):
         from .external_session import EXTERNAL
         if self.worker is not None and self.worker.is_alive() and (self._active_external or name in EXTERNAL):
             self.checkpoint.set(self._active_selection)
+            self.agent_picker.set(self._active_selection)
             self.logline('Останови текущую партию перед сменой типа движка.')
             return
         if self.worker is not None and self.worker.is_alive():
+            self._active_selection=name
             if self.bot is None:
                 self.agent_pending_on_start=name
                 self.logline('Агент будет применён после запуска: '+name)
