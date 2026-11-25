@@ -157,3 +157,7 @@ Teacher score targets, curriculum, value/negative learning, legal symmetries, bo
 ### Tactical Optimization 0.9.3.3
 
 Optimization/Batch/Replay/Capacity labs, loss and gradient diagnostics, frozen local V4 builder, canonical audit cache and clean-set guard. Start `START_TACTICAL_TRAINER.bat` option 5.
+
+### Neural Scaling & Generalization 0.9.3.4
+
+Family-grouped datasets, initialized Advanced fine-tuning with separate retention teacher, protected categories, GPU lab, round robin and optional independent PGN/UCI evaluation. See [Scaling guide](docs/guides/NEURAL_SCALING.md). Start `START_TACTICAL_TRAINER.bat` option 11.

@@ -42,7 +42,9 @@ def main():
     if mode in ('11','12'):
         from .scaling_experiment import DEFAULT_SOURCE as ADVANCED,new_config,run,PROFILES
         if mode=='12':
-            out=output_dir(Path(input('Scaling experiment directory: ').strip().strip('"')),True)
+            raw=input('Scaling experiment directory: ').strip().strip('"')
+            if not raw:p.error('Directory required')
+            out=output_dir(Path(raw),True)
             cfg=json.loads((out/'scaling_config.json').read_text(encoding='utf-8'))
         else:
             source=Path(input(f'Initial checkpoint [{ADVANCED}]: ').strip().strip('"') or ADVANCED)

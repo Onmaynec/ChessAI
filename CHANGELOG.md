@@ -1,3 +1,9 @@
+## v0.9.3.4 — Neural Scaling & Generalization
+
+- Resumable 6k/24k/60k generated datasets with family split and previous-data exclusions.
+- Initialized model fine-tuning, regularization, dual-teacher retention and category guard.
+- GPU performance lab, multi-model local tournament and optional independent PGN/UCI evaluation.
+
 # Chess AI Changelog
 
 ## v0.9.3.3 — Tactical Optimization
