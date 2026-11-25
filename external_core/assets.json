@@ -1,0 +1,16 @@
+{
+  "stockfish": {
+    "version": "19",
+    "url": "https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-windows-x86-64-universal.zip",
+    "sha256": "3c8bf1f9ea66a09350a40df4f632288285ac206d99f33ab5842c408fc30b48a7",
+    "size": 81431614,
+    "exe_prefix": "stockfish"
+  },
+  "lc0": {
+    "version": "0.32.1",
+    "url": "https://github.com/LeelaChessZero/lc0/releases/download/v0.32.1/lc0-v0.32.1-windows-gpu-nvidia-cuda12.zip",
+    "sha256": "8d0ce17676eb15e303bea9e790742d31c94ce5d24107f6187adc58e820f6d2f7",
+    "size": 581970338,
+    "exe_prefix": "lc0"
+  }
+}
