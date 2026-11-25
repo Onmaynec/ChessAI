@@ -58,7 +58,7 @@ def check_computer_browser_focus(expected_hwnd: int | None = None):
 
 
 def click_move(move,rect,color,screen, *, clicker=None, expected_hwnd=None,
-               report=None, sleep=time.sleep):
+               report=None, sleep=time.sleep, computer_only=False):
     """Make a move; if promoting, use visual piece-picker confirmation.
 
     Chess.com may auto-queen, or display a four-piece promotion menu.
@@ -70,7 +70,14 @@ def click_move(move,rect,color,screen, *, clicker=None, expected_hwnd=None,
     from .promotion import (is_promotion, promotion_picker_choices,
                             identify_promoted_piece)
     from .recognizer import cell, orient_rc
-    check_computer_browser_focus(expected_hwnd)
+    def guard():
+        check_computer_browser_focus(expected_hwnd)
+        if computer_only:
+            from .focus import current_foreground
+            from .external_session import computer_title
+            hwnd,title=current_foreground()
+            if hwnd!=expected_hwnd or not computer_title(title):raise RuntimeError('Computer-only window check failed')
+    guard()
     if clicker is None:
         clicker=pyautogui.click
     promotion=is_promotion(move)
@@ -80,7 +87,7 @@ def click_move(move,rect,color,screen, *, clicker=None, expected_hwnd=None,
         if modifier:
             pyautogui.keyDown('alt')
         for x,y in move_points(move,rect,color):
-            check_computer_browser_focus(expected_hwnd)
+            guard()
             px,py=screen.pixel(x,y)
             clicker(px,py)
             sleep(.09)
@@ -99,7 +106,7 @@ def click_move(move,rect,color,screen, *, clicker=None, expected_hwnd=None,
         from types import SimpleNamespace
         # Let the browser finish the first click and render the menu / queen.
         sleep(.22)
-        check_computer_browser_focus(expected_hwnd)
+        guard()
         first=screen.grab(rect)
         observed=SimpleNamespace(raw_tiles=tiles(first,color),sides=None)
         seen=identify_promoted_piece(observed,move[2:4],side)
@@ -120,14 +127,14 @@ def click_move(move,rect,color,screen, *, clicker=None, expected_hwnd=None,
         else:
             target=move_points(move,rect,color)[1]
             method='повторный клик в центр клетки назначения'
-        check_computer_browser_focus(expected_hwnd)
+        guard()
         clicker(*screen.pixel(*target))
         queen_reclicked=True
         if report:report('Превращение в ферзя: '+method+' ('+move[2:4]+'); подтверждаю изображением')
         # Only ONE additional click is sent. The rest of this function is
         # read-only verification; it never clicks again on an uncertain board.
         sleep(.22)
-        check_computer_browser_focus(expected_hwnd)
+        guard()
         confirmed=screen.grab(rect)
         observed=SimpleNamespace(raw_tiles=tiles(confirmed,color),sides=None)
         seen=identify_promoted_piece(observed,move[2:4],side)
@@ -140,7 +147,7 @@ def click_move(move,rect,color,screen, *, clicker=None, expected_hwnd=None,
     # order of Q/R/B/N, which differs between clients and site versions.
     timeout=time.monotonic()+3.3
     while time.monotonic()<timeout:
-        check_computer_browser_focus(expected_hwnd)
+        guard()
         sleep(.16)
         current=screen.grab(rect)
         popup=promotion_picker_choices(before,current,color,move[2:4],side)
@@ -152,7 +159,7 @@ def click_move(move,rect,color,screen, *, clicker=None, expected_hwnd=None,
             x,y,size=rect
             cx=x+int((visual_col+.5)*size/8)
             cy=y+int((visual_row+.5)*size/8)
-            check_computer_browser_focus(expected_hwnd)
+            guard()
             clicker(*screen.pixel(cx,cy))
             if report:report('Выбрана фигура превращения: '+move[4].upper())
             return 'picker'
@@ -199,7 +206,8 @@ class VisionAutoplay:
                  report,stop,device:str='cpu',screen=None,session_factory=BotLabSession,expected_hwnd=None,
                  *, resume: bool = True, recovery_enabled: bool | None = None,
                  attach_any_position: bool = False, explicit_turn: str | None = None,
-                 analysis_level: str = 'standard', browser_window=None, phantom_opening: bool=False):
+                 analysis_level: str = 'standard', browser_window=None, phantom_opening: bool=False,
+                 store_factory=RecoveryStore, external_authorized=False):
         self.engine=engine;self.checkpoint=checkpoint;self.run_dir=run_dir
         self.color=color;self.rect=rect;self.report=report;self.stop=stop
         self.device=device;self.screen=screen;self.session_factory=session_factory
@@ -210,6 +218,8 @@ class VisionAutoplay:
         self.analysis_level = analysis_level
         self.phantom_opening = bool(phantom_opening)
         self.browser_window=browser_window
+        self.store_factory=store_factory
+        self.external_authorized=bool(external_authorized)
         self._agent_lock=threading.Lock()
         self._queued_agent=None
         # Test-injected mock sessions do not necessarily support the C++ journal.
@@ -217,6 +227,7 @@ class VisionAutoplay:
 
     def request_agent_switch(self, filename: str) -> None:
         """Thread-safe request; the game loop handles it only between plies."""
+        if self.external_authorized:raise ValueError('Stop external session before changing agent')
         from neural.agent_profiles import ALIASES
         if filename not in ALIASES:raise ValueError('Unknown checkpoint selection')
         with self._agent_lock:
@@ -348,6 +359,10 @@ class VisionAutoplay:
         # screen must be kept on self for _observe() and closed on exit.
         # Previously run() used a local variable only, causing:
         # AttributeError: 'NoneType' object has no attribute 'grab'
+        if self.external_authorized:
+            from .external_session import computer_title
+            if self.browser_window is None or not computer_title(self.browser_window.title):
+                self.report('ОСТАНОВКА: требуется подтверждённое окно компьютерной игры');return
         owns_screen = self.screen is None
         screen = None
         sess = None
@@ -368,7 +383,7 @@ class VisionAutoplay:
                                 f'y={info["shift_y"]}, размер={info["delta_size"]:+d}px')
                     self.rect = refined
             initial = screen.grab(self.rect)
-            store = RecoveryStore(self.run_dir, self.color) if self.recovery_enabled else None
+            store = self.store_factory(self.run_dir, self.color) if self.recovery_enabled else None
             if self.attach_any_position:
                 if store is None:
                     raise RecoveryError('Подключение к текущей партии требует сохранения журнала')
@@ -435,7 +450,7 @@ class VisionAutoplay:
                 from neural.agent_profiles import profile_for_filename
                 sess.agent_label=data.get('original_checkpoint','latest.pt')
                 sess.agent_profile=profile_for_filename(sess.agent_label)
-                self.report('Модель восстановлена из неизменяемого снимка checkpoint этой партии')
+                self.report('Агент восстановлен из проверенного снимка партии')
             else:
                 # New game is allowed only after the starting-board visual check.
                 recognizer = VisionRecognizer(initial, self.color)
@@ -450,7 +465,7 @@ class VisionAutoplay:
                 sess = self.session_factory(self.engine, checkpoint, self.color, device=self.device)
                 self.report('Новая партия: исходная доска проверена, модель загружена')
             # Deep analysis affects only move inference, never checkpoint or PPO.
-            if hasattr(sess,'analysis_level'):
+            if hasattr(sess,'analysis_level') and not self.external_authorized:
                 sess.analysis_level=self.analysis_level
                 from neural.agent_profiles import profile_for_filename
                 # New match uses frozen_<color>.pt, which has no style in the name.
@@ -469,7 +484,8 @@ class VisionAutoplay:
                 self.report('Активный агент: '+logical_name+
                             (' · '+sess.agent_profile.search_style if sess.agent_profile else ' · balanced'))
             self.report('Vision v0.7.6: расширенный журнал и углублённый анализ включены')
-            self.report('Режим расчёта: '+('выборочный поиск до 7 полуходов' if self.analysis_level=='deep' else 'обычный поиск до 5 полуходов'))
+            if self.external_authorized:self.report('Внешний UCI: '+sess.label+' · '+sess.profile)
+            else:self.report('Режим расчёта: '+('выборочный поиск до 7 полуходов' if self.analysis_level=='deep' else 'обычный поиск до 5 полуходов'))
             self.report('Начальная позиция: '+sess.state['fen'])
             from .telemetry import position_summary
             self.report(position_summary(sess.state['fen']))
@@ -497,7 +513,13 @@ class VisionAutoplay:
                     if focus_browser_from_panel(self.browser_window):
                         self.report('Фокус возвращён браузеру после просмотра панели анализа')
                     self._check_stop()
-                    click_move(move,self.rect,self.color,screen,expected_hwnd=self.expected_hwnd,report=self.report)
+                    if self.external_authorized:
+                        from .focus import current_foreground
+                        from .external_session import computer_title
+                        hwnd,title=current_foreground()
+                        if hwnd!=self.expected_hwnd or not computer_title(title):raise RuntimeError('Computer-only window check failed; no move sent')
+                    click_move(move,self.rect,self.color,screen,expected_hwnd=self.expected_hwnd,report=self.report,
+                               **({'computer_only':True} if self.external_authorized else {}))
                     self.report(f'Клик выполнен: {move}; проверяю изображение доски')
                     replies = self._preview_opponent_replies(sess, move)
                     recognized, fast_reply = self._wait_own_or_immediate_reply(

@@ -266,11 +266,15 @@ class Workspace:
         row=self.row(c)
         picker=self.ctk.CTkFrame(row,fg_color='transparent')
         picker.pack(side='left',fill='x',expand=True)
-        self.agent_picker=self.choice(picker,'','',self.checkpoint,[(n,n,n) for n in ALIASES],change=self.on_agent_change)
+        from .external_session import available
+        self.agent_picker=self.choice(picker,'','',self.checkpoint,[(n,n,n) for n in (*ALIASES,*available())],change=self.on_agent_change)
         self.model_hint=self.ctk.CTkFrame(row,fg_color=FIELD,corner_radius=7)
         self.label(self.model_hint,'Выбранная модель','Selected model',size=10,color=MUTED).pack(anchor='w',padx=8,pady=(2,0))
         self.model_hint_text=StableStringVar(value='')
         self.label(self.model_hint,variable=self.model_hint_text,size=11).pack(anchor='w',padx=8,pady=(0,2))
+        from external_core.uci import PROFILES
+        profile_row=self.row(c)
+        self.choice(profile_row,'Мощность UCI','UCI performance',self.external_profile,[(n,n,n) for n in PROFILES],lock=True)
         self.button(c,'Multi-Engine Lab · локальная доска','Multi-Engine Lab · local board',self.open_multi_engine,width=240).pack(fill='x',padx=17,pady=6)
         self.section(c,2,'Область доски','Board region')
         row=self.row(c)
@@ -693,7 +697,8 @@ class Workspace:
         self.set_fen(event.get('fen',''))
         d=event['details']
         self.move_text.set(str(event.get('move','—')))
-        cp=d.get('engine_cp');self.eval_text.set(f'{cp:+d} cp' if isinstance(cp,int) else '—')
+        cp=d.get('engine_cp');score=d.get('uci_score') or {}
+        self.eval_text.set(f'{cp:+d} cp' if isinstance(cp,int) else f'M{score["value"]}' if score.get('kind')=='mate' else '—')
         self.depth_text.set(str(d.get('search_depth','—')))
         self.detail_text.set(self.tr('Ответ: ','Reply: ')+str(d.get('expected_reply') or '—')+' · '+str(d.get('search_time_s','—'))+' s')
         self.draw_candidates(d.get('candidates') or [])
@@ -748,7 +753,8 @@ class Workspace:
         if signature!=self._system_signature or now-getattr(self,'_system_checked',0)>1:
             self._system_signature=signature;self._system_checked=now
             self._engine_exists=self.engine.is_file()
-            self._model_exists=(self.run/'checkpoints'/self.checkpoint.get()).is_file()
+            from .external_session import EXTERNAL,available
+            self._model_exists=(self.checkpoint.get() in available()) if self.checkpoint.get() in EXTERNAL else (self.run/'checkpoints'/self.checkpoint.get()).is_file()
             self.engine_status.set(('● ' if self._engine_exists else '○ ')+self.tr('Движок','Engine'))
             self.checkpoint_status.set(('● ' if self._model_exists else '○ ')+self.tr('Модель','Model'))
             self.model_hint_text.set(self.tr('Файл найден','File available') if self._model_exists else self.tr('Файл отсутствует','File missing'))

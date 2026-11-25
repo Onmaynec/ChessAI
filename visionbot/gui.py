@@ -35,6 +35,8 @@ class App(Workspace):
         self.msg=queue.Queue()
         self.color=tk.StringVar(value='white');self.checkpoint=tk.StringVar(value='latest.pt')
         self.consent=tk.BooleanVar(value=False)
+        self.external_profile=tk.StringVar(value='balanced')
+        self._active_external=False
         self.train=tk.BooleanVar(value=False)
         self.resume=tk.BooleanVar(value=True)
         self.turn=tk.StringVar(value='auto')
@@ -61,6 +63,11 @@ class App(Workspace):
 
     def on_agent_change(self,event=None):
         name=self.checkpoint.get()
+        from .external_session import EXTERNAL
+        if self.worker is not None and self.worker.is_alive() and (self._active_external or name in EXTERNAL):
+            self.checkpoint.set(self._active_selection)
+            self.logline('Останови текущую партию перед сменой типа движка.')
+            return
         if self.worker is not None and self.worker.is_alive():
             if self.bot is None:
                 self.agent_pending_on_start=name
@@ -229,9 +236,19 @@ class App(Workspace):
         if self.overlays._capturing:return
         if not self.consent.get():messagebox.showwarning('Режим','Подтверди, что играешь против компьютерного бота.');return
         if not self.rect:messagebox.showwarning('Калибровка','Сначала выдели шахматную доску.');return
-        ck=self.run/'checkpoints'/self.checkpoint.get()
+        from .external_session import EXTERNAL,ExternalRecovery,input_spec,computer_title
         from .recovery import RecoveryStore
-        is_resume=not attach_any_position and (self.resume.get() if hasattr(self, 'resume') else True) and RecoveryStore(self.run,self.color.get()).exists()
+        from botlab.session import BotLabSession
+        selection=self.checkpoint.get();external=selection in EXTERNAL
+        game_run=self.run;factory=BotLabSession;store_factory=RecoveryStore
+        if external:
+            try:ck,game_run,factory=input_spec(selection,self.external_profile.get())
+            except (ValueError,OSError) as exc:messagebox.showerror('External UCI',str(exc));return
+            store_factory=ExternalRecovery
+            if not messagebox.askyesno('Authorized computer test',
+                'Confirm written authorization from Chess.com for automated testing, a computer-only opponent, and that Scaling/PPO/GPU training is stopped. No human games.',parent=self.root):return
+        else:ck=self.run/'checkpoints'/selection
+        is_resume=not attach_any_position and (self.resume.get() if hasattr(self, 'resume') else True) and store_factory(game_run,self.color.get()).exists()
         if not ck.is_file() and not is_resume:messagebox.showerror('Checkpoint',f'Не найден:\n{ck}');return
         if not self.engine.is_file():messagebox.showerror('Движок','C++ chessai.exe не собран. Запусти START_CHESS_AI.bat.');return
         # The tactical v0.7.1 GUI accidentally dropped the focus handoff
@@ -239,6 +256,7 @@ class App(Workspace):
         # computer-game browser BEFORE minimizing our Tk window.
         try:
             browser=find_browser()
+            if external and not computer_title(browser.title):raise RuntimeError('Computer-only Chess.com page title required for external UCI test')
         except RuntimeError as exc:
             messagebox.showerror('Chess.com browser',str(exc))
             return
@@ -247,7 +265,7 @@ class App(Workspace):
             messagebox.showwarning('Vision Bot','Move the window outside the calibrated board.')
             return
         self.ev.clear()
-        if self.train.get():
+        if self.train.get() and not external:
             try:
                 from .trainer import ensure_selfplay
                 self.logline(ensure_selfplay(RUN_ID,self.engine,500))
@@ -279,7 +297,8 @@ class App(Workspace):
             messagebox.showerror('Не удалось активировать Chess.com',str(exc))
             self.logline('Локальное самообучение (если запущено) не остановлено.')
             return
-        self.logline('Vision: переключение Latest / SkillBoost / Aggressive / Defender во время партии включено')
+        self._active_external=external;self._active_selection=selection
+        self.logline('Внешний UCI: '+selection+' · '+self.external_profile.get() if external else 'Vision: переключение нейросетей во время партии включено')
         self.logline(f'Браузер активирован: {browser.title}')
         chosen_level='deep' if self.analysis_mode.get().startswith('Глубокий') else 'standard'
         chosen_rect=tuple(self.rect)
@@ -287,14 +306,16 @@ class App(Workspace):
         def run():
             import time
             if self.ev.wait(0.6):return
-            bot=VisionAutoplay(self.engine,ck,self.run,chosen_color,chosen_rect,
+            bot=VisionAutoplay(self.engine,ck,game_run,chosen_color,chosen_rect,
                                self.logline,self.ev,expected_hwnd=browser.hwnd,
                                browser_window=browser,
                                resume=chosen_resume,
                                attach_any_position=attach_any_position,
                                explicit_turn=chosen_turn,
                                phantom_opening=chosen_phantom,
-                               analysis_level=chosen_level)
+                               analysis_level=chosen_level,
+                               session_factory=factory,recovery_enabled=True,store_factory=store_factory,
+                               external_authorized=external)
             self.bot=bot
             if getattr(self,'agent_pending_on_start',None):
                 bot.request_agent_switch(self.agent_pending_on_start)

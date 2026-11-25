@@ -55,6 +55,9 @@ def formatted_analysis(event: dict) -> list[str]:
     res = [f"Ход № {event.get('ply',0)+1}: {event.get('move','?')}",
            position_summary(event.get('fen','')),
            f"FEN: {event.get('fen','?')}"]
+    if d.get('mode')=='external_uci':
+        res.extend([f"UCI: {d.get('engine')} · {d.get('profile')}",f"Оценка: {d.get('uci_score')} · глубина {d.get('search_depth')} · nodes {d.get('search_nodes')} · NPS {d.get('nps')}",f"PV: {' '.join(d.get('illustrative_line',[]))}",f"Время: {d.get('search_time_s')} с; перезапуски: {d.get('uci_restarts')}"])
+        return res
     if d.get('mode') != 'neural_plus_cpp_search':
         res.append('ТАКТИЧЕСКИЙ ПОИСК НЕДОСТУПЕН — fallback нейросети')
         if d.get('reason'):res.append('Причина: '+str(d['reason'])[:230])

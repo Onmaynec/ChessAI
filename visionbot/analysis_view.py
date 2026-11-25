@@ -57,6 +57,12 @@ def report_sections(event, en=False):
     mode=d.get('mode')
     chosen=uci(event.get('move')) or '—'
     cp=number(d.get('engine_cp'),'+.0f')
+    if mode=='external_uci':
+        return [('Engine' if en else 'Движок',str(d.get('engine'))+' · '+str(d.get('profile'))),
+                ('Decision' if en else 'Решение',chosen+' · '+str(d.get('uci_score'))),
+                ('Search' if en else 'Расчёт',f"Depth {d.get('search_depth')} · {d.get('search_time_s')} s · nodes {d.get('search_nodes')} · NPS {d.get('nps')}"),
+                ('Principal variation' if en else 'Основная линия поиска',' → '.join(line_moves(event))),
+                ('WDL',str(d.get('wdl') or '—'))]
     sections=[
       ('Position' if en else 'Позиция',f'{turn} · '+('material' if en else 'материал')+f' W {white} / B {black}\n'+('Engine score, side to move: ' if en else 'Оценка стороны хода: ')+cp+' cp'),
       ('Decision' if en else 'Решение',f'{chosen}  ·  policy {number(d.get("policy"))}  ·  value {number(event.get("value"),"+.3f")}'),
