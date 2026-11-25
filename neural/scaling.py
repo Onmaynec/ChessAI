@@ -87,4 +87,4 @@ def guard_categories(current,baseline,tolerance=.05):
 def settings(reference,reference_sha256):
     return {'schema':'scaling_v1','reference':str(reference),'reference_sha256':reference_sha256,
             'weight_decay':.02,'head_dropout':.10,'distill_temperature':2.,
-            'distill_weight':.15,'defense_tolerance':.05,'eval_train_limit':0}
+            'distill_weight':.15,'defense_tolerance':.05}

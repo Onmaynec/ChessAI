@@ -48,7 +48,7 @@ def freeze(pgn,out,count,seed,exclude):
                 'excluded_hashes':hashes,'seed':seed,'games_scanned':games,'eligible_games':valid,'cases':rows})
     return path
 
-def evaluate(positions,uci,models,out,nodes,run=None,audit_cache=None,device='auto'):
+def evaluate(positions,uci,models,out,nodes,run=None,audit_cache=None,device='auto',exclude=()):
     import chess
     import chess.engine
     import torch
@@ -63,7 +63,15 @@ def evaluate(positions,uci,models,out,nodes,run=None,audit_cache=None,device='au
     if run is not None:
         from .audit_cache import audit_cached
         audit=audit_cached(run,cases,audit_cache)
-    excluded=set(audit['overlapping_ids']);dev=torch.device('cuda' if device=='auto' and torch.cuda.is_available() else 'cpu' if device=='auto' else device)
+    from .suite import load_suite
+    forbidden=set()
+    for p in sorted(Path(__file__).parent.glob('suite_v*.json')):
+        s,_=load_suite(p);forbidden.update(canonical(r['fen']) for r in s['cases'])
+    for p in exclude:
+        with p.open(encoding='utf-8') as f:forbidden.update(canonical(json.loads(l)['fen']) for l in f if l.strip())
+    prior_overlap={r['id'] for r in cases if canonical(r['fen']) in forbidden}
+    audit['known_training_or_suite_overlap']=sorted(prior_overlap)
+    excluded=set(audit['overlapping_ids'])|prior_overlap;dev=torch.device('cuda' if device=='auto' and torch.cuda.is_available() else 'cpu' if device=='auto' else device)
     networks={n:load_model(p,dev) for n,p in models.items()}
     stats={n:[] for n in models};report={'schema':'external_teacher_v1','status':'running','positions_sha256':pos_hash,
         'engine_sha256':engine_hash,'models':hashes,'nodes_per_search':nodes,'audit':audit,'device':str(dev)}
@@ -121,6 +129,6 @@ def main():
     out=output_dir(a.output)
     exclude=sorted(set(Path('tactical_experiments').rglob('dataset.jsonl'))|set(Path('tactical_experiments').rglob('replay.jsonl'))|set(a.exclude))
     positions=a.positions or freeze(a.pgn,out,a.count,a.seed,exclude)
-    evaluate(positions,a.uci,models,out,a.nodes,a.run,a.audit_cache,a.device)
+    evaluate(positions,a.uci,models,out,a.nodes,a.run,a.audit_cache,a.device,exclude)
 
 if __name__=='__main__':main()
