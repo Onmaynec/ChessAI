@@ -65,6 +65,9 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
         from benchmark.suite import load_suite
         for path in (Path(__file__).resolve().parents[1]/'benchmark').glob('suite_v*.json'):
             payload,_=load_suite(path);forbidden.update(canonical(r['fen']) for r in payload['cases'])
+        if scaling is not None:
+            val_families={r['family_id'] for r in rows['validation']}
+            if any(scaling_lib.family_id(r['fen']) in val_families for r in replay_rows):raise ValueError('Replay family overlap')
         for r in replay_rows:
             key=canonical(r['fen'])
             if key in forbidden:raise ValueError('Replay overlap or duplicate')
@@ -159,6 +162,7 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
                     individual.append(m)
                     groups['all'].append(m);groups[r['category']].append(m)
         return {k:aggregate(v) for k,v in groups.items()},individual
+    reference_baseline=evaluate('validation',reference)[0] if scaling is not None else None
     recovery=out/'training_state.pt';candidate=out/'candidate.pt'
     def save_state(obj):
         tmp=recovery.with_suffix('.tmp');torch.save(obj,tmp);tmp.replace(recovery)
@@ -179,7 +183,7 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
         history=[];stale=0;steps=0;start_epoch=1;eligible_best=None
     def report(status):
         return {'schema':'tactical_train_v2','status':status,'source':str(source),**config,
-                'baseline':baseline,'epochs':history,'selected_epoch':best_epoch,
+                'baseline':baseline,'reference_baseline':reference_baseline,'epochs':history,'selected_epoch':best_epoch,
                 'candidate':str(candidate) if status=='complete' and best_epoch and candidate.exists() else None,
                 'validation_accuracy':eligible_best['top1'] if mastery and eligible_best else baseline['all']['top1'] if mastery else best['top1'],
                 'best_observed_validation':best,'selected_validation':eligible_best if mastery else best,
@@ -256,7 +260,7 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
             if not mastery and current['top1']>baseline['all']['top1']:
                 best_epoch=epoch;best_model={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}
         else:stale+=1
-        if mastery and (optimization_lib.candidate_ok(current,baseline['all']) if optimization is not None else eligible_candidate(current,baseline['all'])) and (scaling is None or scaling_lib.guard_categories(metrics,baseline,scaling['defense_tolerance'])) and (eligible_best is None or key(current)>key(eligible_best)):
+        if mastery and (optimization_lib.candidate_ok(current,baseline['all']) if optimization is not None else eligible_candidate(current,baseline['all'])) and (scaling is None or (scaling_lib.guard_categories(metrics,baseline,scaling['defense_tolerance']) and scaling_lib.guard_categories(metrics,reference_baseline,scaling['defense_tolerance']))) and (eligible_best is None or key(current)>key(eligible_best)):
             eligible_best=current;best_epoch=epoch;best_model={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}
         if mastery and epoch<5:stale=0
         if optimization is not None and epoch<optimization['min_epochs']:stale=0
@@ -265,7 +269,7 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
                         'steps':steps,'curriculum_examples':len(indices),'augmented_epoch':split=='augmented','mean_grad_norm':sum(grad_norms)/len(grad_norms),
                         'loss_components':{k:v/len(losses) for k,v in component_sums.items()},'gradient_samples':gradient_samples,
                         'next_group_lrs':{g.get('name','all'):g['lr'] for g in opt.param_groups},
-                        'protected_categories_ok':scaling_lib.guard_categories(metrics,baseline,scaling['defense_tolerance']) if scaling is not None else None})
+                        'protected_categories_ok':(scaling_lib.guard_categories(metrics,baseline,scaling['defense_tolerance']) and scaling_lib.guard_categories(metrics,reference_baseline,scaling['defense_tolerance'])) if scaling is not None else None})
         save_state({'config':config,'epoch':epoch,'model':model.state_dict(),'optimizer':opt.state_dict(),
                     'scheduler':scheduler.state_dict(),'baseline':baseline,'history':history,'best':best,
                     'best_epoch':best_epoch,'best_model':best_model,'eligible_best':eligible_best,'stale':stale,'steps':steps,

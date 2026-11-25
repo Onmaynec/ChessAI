@@ -23,7 +23,7 @@ def main():
     a=p.parse_args();engine=a.engine.resolve()
     if not engine.is_file():p.error('C++ engine missing')
     print('Stop PPO training and Vision Studio before starting.')
-    print('1. New Tactical Mastery experiment\n2. Resume existing experiment\n3. Learning Rate Lab (existing V3 dataset)\n4. Anti-Repetition Lab (local test)\n5. Tactical Optimization (reuse V3 dataset)\n6. Batch Lab\n7. Replay Lab\n8. Capacity Lab\n9. Resume Optimization Lab\n10. Build frozen V4 holdout')
+    print('1. New Tactical Mastery experiment\n2. Resume existing experiment\n3. Learning Rate Lab (existing V3 dataset)\n4. Anti-Repetition Lab (local test)\n5. Tactical Optimization (reuse V3 dataset)\n6. Batch Lab\n7. Replay Lab\n8. Capacity Lab\n9. Resume Optimization Lab\n10. Build frozen V4 holdout\n11. Neural Scaling (new dataset + training)\n12. Resume Neural Scaling\n13. GPU Performance Lab')
     mode=input('Action [1]: ').strip() or '1'
     if mode in ('5','6','7','8','9'):
         from .optimization_lab import run as optimize_run,main as optimize_main
@@ -39,6 +39,26 @@ def main():
         try:optimize_main()
         finally:sys.argv=previous
         return
+    if mode in ('11','12'):
+        from .scaling_experiment import DEFAULT_SOURCE as ADVANCED,new_config,run,PROFILES
+        if mode=='12':
+            out=output_dir(Path(input('Scaling experiment directory: ').strip().strip('"')),True)
+            cfg=json.loads((out/'scaling_config.json').read_text(encoding='utf-8'))
+        else:
+            source=Path(input(f'Initial checkpoint [{ADVANCED}]: ').strip().strip('"') or ADVANCED)
+            reference=Path(input(f'Retention reference [{DEFAULT_SOURCE}]: ').strip().strip('"') or DEFAULT_SOURCE)
+            print('1. Pilot: ~5000 train / 1000 validation\n2. Standard: ~20000 / 4000\n3. Full: ~50000 / 10000')
+            profile={'1':'pilot','2':'standard','3':'full'}.get(input('Profile [1]: ').strip() or '1')
+            if not profile:p.error('Invalid profile')
+            cfg=new_config(engine,source,reference,profile,9342026)
+            out=output_dir(Path('tactical_experiments')/('v0934_'+profile+'_'+uuid4().hex[:10]))
+        limit=min(2000000,60*cfg['count']);raw=input(f'Total attempt budget [{limit}]: ').strip()
+        run(engine,out,cfg,int(raw) if raw else limit);return
+    if mode=='13':
+        from .scaling_experiment import DEFAULT_SOURCE as ADVANCED
+        from .scaling_gpu import run
+        source=Path(input(f'Checkpoint [{ADVANCED}]: ').strip().strip('"') or ADVANCED)
+        run(source,output_dir(Path('tactical_experiments')/('gpu_'+uuid4().hex[:10])));return
     if mode=='10':
         from benchmark.build_holdout import build
         paths=sorted(set(Path('tactical_experiments').rglob('dataset.jsonl'))|set(Path('tactical_experiments').rglob('replay.jsonl')))

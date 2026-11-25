@@ -96,6 +96,7 @@ def main(argv=None):
     p.add_argument('--output',type=Path,required=True,help='New report directory outside runs/models/config')
     p.add_argument('--agents',nargs='+')
     p.add_argument('--candidate',type=Path,help='Optional separate experimental checkpoint')
+    p.add_argument('--extra-agent',action='append',default=[],metavar='NAME=CHECKPOINT',help='Additional local models for round robin; not for two-model promotion guard')
     p.add_argument('--suite',choices=['v1','v2','v3','v4'],default='v3')
     p.add_argument('--profile',choices=['quick','standard','full'],default='standard')
     p.add_argument('--pairs',type=int,default=None)
@@ -127,6 +128,12 @@ def main(argv=None):
     if a.candidate:
         if not a.candidate.is_file():p.error('Candidate not found')
         paths['experimental_candidate.pt']=a.candidate
+    import re
+    for item in a.extra_agent:
+        name,sep,raw=item.partition('=');path=Path(raw)
+        if not sep or not re.fullmatch(r'[A-Za-z0-9_.-]{1,48}',name) or name in paths or not path.is_file():p.error('Invalid extra-agent: '+item)
+        paths[name]=path
+    if len(paths)>6:p.error('At most six models per round robin')
     if not paths:p.error('No supported checkpoints found in run/checkpoints')
     # Separate namespace; never write into training directories or existing reports.
     out=a.output.resolve()

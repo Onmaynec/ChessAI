@@ -9,7 +9,7 @@ from .tactics import canonical
 from .tactical_data import hash_file
 from .tactical_learning import atomic_json,experiment_lock
 
-def snapshot(run,dataset,out,engine,limit=512,scan=30000,seed=9322026):
+def snapshot(run,dataset,out,engine,limit=512,scan=30000,seed=9322026,family_holdout=False):
     from neural.storage import archived_segments
     from neural.selfplay import ChessBridge
     from benchmark.suite import load_suite
@@ -22,12 +22,18 @@ def snapshot(run,dataset,out,engine,limit=512,scan=30000,seed=9322026):
         path=out/'replay.jsonl';meta=out/'replay_meta.json'
         cfg={'schema':'retention_replay_v1','run':str(run.resolve()),'dataset_sha256':hash_file(dataset),
              'engine_sha256':hash_file(engine),'limit':limit,'scan':scan,'seed':seed}
+        if family_holdout:cfg['family_holdout']='coarse_material_king_zones_v1'
         if meta.exists():
             m=json.loads(meta.read_text(encoding='utf-8'))
             if any(m.get(k)!=v for k,v in cfg.items()) or not path.is_file() or m.get('sha256')!=hash_file(path):
                 raise ValueError('Replay snapshot mismatch')
             return path
-        forbidden={canonical(json.loads(l)['fen']) for l in dataset.read_text(encoding='utf-8').splitlines()}
+        rows=[json.loads(l) for l in dataset.read_text(encoding='utf-8').splitlines()]
+        forbidden={canonical(r['fen']) for r in rows}
+        if family_holdout:
+            from .scaling import family_id
+            families={family_id(r['fen']) for r in rows if r['split']=='validation'}
+        del rows
         for suite in sorted((Path(__file__).resolve().parents[1]/'benchmark').glob('suite_v*.json')):
             payload,_=load_suite(suite);forbidden.update(canonical(r['fen']) for r in payload['cases'])
         sources=[run/'experience.jsonl',*reversed(archived_segments(run,'experience.jsonl'))]
@@ -46,7 +52,7 @@ def snapshot(run,dataset,out,engine,limit=512,scan=30000,seed=9322026):
                         row=json.loads(line);fen=row['fen'];moves=row['legal_moves']
                         if not moves or len(moves)!=len(set(moves)):raise ValueError('Bad move list')
                         key=canonical(fen)
-                        if key not in seen:
+                        if key not in seen and (not family_holdout or family_id(fen) not in families):
                             seen.add(key);eligible+=1
                             sample={'fen':fen,'legal':moves}
                             if len(selected)<limit:selected.append(sample)
