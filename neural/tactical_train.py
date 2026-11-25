@@ -25,11 +25,11 @@ def load_rows(path):
     if min(map(len,rows.values()))<2:raise ValueError('Insufficient independent validation examples')
     return rows
 
-def train(source,dataset,out,engine,epochs,batch,lr,device,seed,patience=6,resume=False,replay=None,optimization=None):
+def train(source,dataset,out,engine,epochs,batch,lr,device,seed,patience=6,resume=False,replay=None,optimization=None,scaling=None):
     with experiment_lock(out):
-        return train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,resume,replay,optimization)
+        return train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,resume,replay,optimization,scaling)
 
-def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,resume,replay=None,optimization=None):
+def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,resume,replay=None,optimization=None,scaling=None):
     import copy
     import math
     import numpy as np
@@ -47,6 +47,12 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
     if optimization is not None:
         if not mastery or not 1<=optimization['min_epochs']<=epochs<=60:raise ValueError('Optimization requires V3 data and valid epoch bounds')
         if optimization!=optimization_lib.settings(optimization['min_epochs'],optimization['replay_weight'],optimization['capacity'],optimization['negative_weight'],optimization['value_weight']):raise ValueError('Invalid optimization settings')
+    if scaling is not None:
+        from . import scaling as scaling_lib
+        if optimization is None or optimization['capacity']!='same' or not meta.get('scaling'):raise ValueError('Scaling requires family-split data and a frozen initialized model')
+        if scaling!=scaling_lib.settings(scaling['reference'],scaling['reference_sha256']):raise ValueError('Invalid scaling settings')
+        if hash_file(Path(scaling['reference']))!=scaling['reference_sha256']:raise ValueError('Retention reference changed')
+        scaling_lib.verify_families(rows)
     replay_rows=[];replay_hash=None
     if replay is not None:
         if not mastery:raise ValueError('Replay requires v3 dataset')
@@ -76,6 +82,7 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
             'patience':patience,'device':str(dev)}
     if mastery:config.update(schema='tactical_train_v3',replay_sha256=replay_hash,objective='soft_policy_value_negative_curriculum_v1')
     if optimization is not None:config.update(schema='tactical_train_v4',optimization=optimization)
+    if scaling is not None:config.update(schema='tactical_train_v5',scaling=scaling)
     print('[TRAIN] Validating legal moves...',flush=True)
     with ChessBridge(engine) as bridge:
         for group in [*rows.values(),augmented,replay_rows]:
@@ -92,18 +99,26 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
     if optimization is not None and optimization['capacity']!='same':
         from neural.model import ChessNet
         model=ChessNet(*optimization_lib.CAPACITY[optimization['capacity']]).to(dev)
-    opt=torch.optim.AdamW(optimization_lib.optimizer_groups(model,lr,optimization) if optimization is not None else model.parameters(),lr=lr)
+    reference=teacher
+    if scaling is not None:
+        reference=load_model(Path(scaling['reference']),dev).eval()
+        for p in reference.parameters():p.requires_grad_(False)
+        def dropout_head(module,args):
+            return (torch.nn.functional.dropout(args[0],p=scaling['head_dropout'],training=model.training),)
+        model.policy.register_forward_pre_hook(dropout_head)
+        model.value.register_forward_pre_hook(dropout_head)
+    opt=torch.optim.AdamW(optimization_lib.optimizer_groups(model,lr,optimization) if optimization is not None else model.parameters(),lr=lr,weight_decay=scaling['weight_decay'] if scaling is not None else .01)
     scheduler=torch.optim.lr_scheduler.ReduceLROnPlateau(opt,mode='max',factor=.5,patience=4 if optimization is not None else 2,min_lr=[g['lr']*.05 for g in opt.param_groups])
     # Encode positions once; only batch tensors are sent to the accelerator.
     data=dict(rows)
     if augmented:data['augmented']=augmented
     if replay_rows:data['replay']=replay_rows
-    encoded={k:torch.from_numpy(np.stack([encode_fen(r['fen']) for r in group])) for k,group in data.items()}
+    encoded={k:torch.from_numpy(np.stack([encode_fen(r['fen']).astype(np.float16) if scaling is not None else encode_fen(r['fen']) for r in group])) for k,group in data.items()}
     legal_ids={k:[[encode_move(m) for m in r['legal']] for r in group] for k,group in data.items()}
     target_ids={k:[[encode_move(m) for m in r.get('accepted',[])] for r in group] for k,group in data.items()}
     targets={k:[soft_targets(r,optimization['temperature'],optimization['soft_fraction']) if optimization is not None else soft_targets(r) for r in group] for k,group in data.items() if k!='replay'} if mastery else {}
     def batch_data(split,indices):
-        x=encoded[split][indices].to(dev)
+        x=encoded[split][indices].to(device=dev,dtype=torch.float32)
         mask=torch.zeros((len(indices),POLICY_SIZE),dtype=torch.bool,device=dev)
         target=torch.zeros_like(mask,dtype=torch.float32)
         negative=torch.zeros_like(mask)
@@ -179,10 +194,11 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
         # Mine errors ONLY on training examples; all rows remain in each epoch.
         train_before,individual=evaluate('train')
         weights=[hard_weight(m,counts[r['category']],mean_size) for r,m in zip(rows['train'],individual)]
+        if scaling is not None:weights=[scaling_lib.weight(r,m,w) for r,m,w in zip(rows['train'],individual,weights)]
         model.train()
         for layer in model.modules():
-            if isinstance(layer,torch.nn.BatchNorm2d) and (optimization is None or optimization['capacity']=='same'):layer.eval()
-        indices=curriculum_indices(rows['train'],epoch) if mastery else list(range(len(weights)))
+            if isinstance(layer,torch.nn.BatchNorm2d) and scaling is None and (optimization is None or optimization['capacity']=='same'):layer.eval()
+        indices=scaling_lib.indices(rows['train'],individual,epoch) if scaling is not None else curriculum_indices(rows['train'],epoch) if mastery else list(range(len(weights)))
         rng=random.Random(seed*1000003+epoch);rng.shuffle(indices)
         split='augmented' if mastery and epoch%2==0 else 'train'
         losses=[];grad_norms=[];component_sums=Counter();gradient_samples=[]
@@ -204,6 +220,13 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
             loss=(per*w).sum()/w.sum()
             if optimization is not None:
                 policy_loss,value_loss,terms=optimization_lib.components(logp,target,accepted,negative,value,values,prior,old_value,w,optimization,scale=min(1.,epoch/5))
+                if scaling is not None:
+                    t=scaling['distill_temperature']
+                    with torch.no_grad():ref_logits,_=reference(x);ref_prob=(ref_logits/t).masked_fill(~mask,-1e9).softmax(1)
+                    student_log=(logits/t).masked_fill(~mask,-1e9).log_softmax(1)
+                    distill=-(ref_prob*student_log).sum(1).mean()*t*t
+                    policy_loss=policy_loss+scaling['distill_weight']*distill
+                    terms['reference_distill']=distill
                 loss=policy_loss+value_loss
                 for k,v in terms.items():component_sums[k]+=float(v.detach())
                 if (start//batch)%optimization['gradient_sample_interval']==0:
@@ -213,7 +236,7 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
                 rx,rm,_,_,_,_=batch_data('replay',ri)
                 rp,rv=model(rx)
                 with torch.no_grad():
-                    op,ov=teacher(rx);op=op.masked_fill(~rm,-1e9).softmax(1)
+                    op,ov=reference(rx);op=op.masked_fill(~rm,-1e9).softmax(1)
                 replay_loss=-(op*rp.masked_fill(~rm,-1e9).log_softmax(1)).sum(1).mean()+.25*(rv-ov).square().mean()
                 loss=loss+(.20 if optimization is None else optimization['replay_weight'])*replay_loss
                 if optimization is not None:component_sums['replay']+=float(replay_loss.detach())
@@ -233,7 +256,7 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
             if not mastery and current['top1']>baseline['all']['top1']:
                 best_epoch=epoch;best_model={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}
         else:stale+=1
-        if mastery and (optimization_lib.candidate_ok(current,baseline['all']) if optimization is not None else eligible_candidate(current,baseline['all'])) and (eligible_best is None or key(current)>key(eligible_best)):
+        if mastery and (optimization_lib.candidate_ok(current,baseline['all']) if optimization is not None else eligible_candidate(current,baseline['all'])) and (scaling is None or scaling_lib.guard_categories(metrics,baseline,scaling['defense_tolerance'])) and (eligible_best is None or key(current)>key(eligible_best)):
             eligible_best=current;best_epoch=epoch;best_model={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}
         if mastery and epoch<5:stale=0
         if optimization is not None and epoch<optimization['min_epochs']:stale=0
@@ -241,7 +264,8 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
                         'train_before':train_before,'train_after':train_after,'lr':lr_used,'next_lr':opt.param_groups[0]['lr'],
                         'steps':steps,'curriculum_examples':len(indices),'augmented_epoch':split=='augmented','mean_grad_norm':sum(grad_norms)/len(grad_norms),
                         'loss_components':{k:v/len(losses) for k,v in component_sums.items()},'gradient_samples':gradient_samples,
-                        'next_group_lrs':{g.get('name','all'):g['lr'] for g in opt.param_groups}})
+                        'next_group_lrs':{g.get('name','all'):g['lr'] for g in opt.param_groups},
+                        'protected_categories_ok':scaling_lib.guard_categories(metrics,baseline,scaling['defense_tolerance']) if scaling is not None else None})
         save_state({'config':config,'epoch':epoch,'model':model.state_dict(),'optimizer':opt.state_dict(),
                     'scheduler':scheduler.state_dict(),'baseline':baseline,'history':history,'best':best,
                     'best_epoch':best_epoch,'best_model':best_model,'eligible_best':eligible_best,'stale':stale,'steps':steps,
@@ -252,11 +276,12 @@ def train_locked(source,dataset,out,engine,epochs,batch,lr,device,seed,patience,
             print('[TRAIN] Early stopping',flush=True);break
     if hash_file(source)!=source_hash or hash_file(dataset)!=data_hash or hash_file(engine)!=engine_hash or (replay is not None and hash_file(replay)!=replay_hash):
         raise RuntimeError('Source, engine, dataset or replay changed during experiment')
+    if scaling is not None and hash_file(Path(scaling['reference']))!=scaling['reference_sha256']:raise RuntimeError('Retention reference changed during training')
     if best_epoch:
         tmp=candidate.with_suffix('.tmp')
         torch.save({'feature_version':FEATURE_VERSION,'config':model.config,'model':best_model,
                     'candidate_only':True,'optimizer':None,
-                    'tactical_adapter':{'source_sha256':source_hash,'dataset_sha256':data_hash,'epoch':best_epoch}},tmp)
+                    'tactical_adapter':{'source_sha256':source_hash,'dataset_sha256':data_hash,'epoch':best_epoch,**({'scaling':scaling} if scaling is not None else {})}},tmp)
         tmp.replace(candidate)
     atomic_json(out/'training_report.json',report('complete'))
     print('Candidate saved for independent testing' if best_epoch else 'No eligible candidate; source retained',flush=True)

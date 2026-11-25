@@ -100,7 +100,7 @@ def label(bridge,engine,state,depth,mastery=False):
             else:return None
     return (accepted,category,best,tags,scores) if mastery else (accepted,category,best,tags)
 
-def generate(engine,out,count,depth,seed,attempts,validation_count=None,resume=False,mastery=False):
+def generate(engine,out,count,depth,seed,attempts,validation_count=None,resume=False,mastery=False,scaling=False,exclude=()):
     from benchmark.suite import load_suite
     validation_count=validation_count if validation_count is not None else max(2,round(count/6))
     suite_dir=Path(__file__).resolve().parents[1]/'benchmark'
@@ -110,8 +110,15 @@ def generate(engine,out,count,depth,seed,attempts,validation_count=None,resume=F
         suite_hashes[path.name]=sha
         forbidden.update(canonical(c['fen']) for c in payload['cases'])
     if not forbidden:raise ValueError('Benchmark exclusion set missing')
+    if scaling and (not mastery or 'suite_v4.json' not in suite_hashes):raise ValueError('Scaling needs frozen V4 and Mastery scores')
+    excluded_hashes={}
+    for p in exclude:
+        excluded_hashes[str(p.resolve())]=hash_file(p)
+        with p.open(encoding='utf-8') as f:
+            forbidden.update(canonical(json.loads(l)['fen']) for l in f if l.strip())
     config={'schema':'tactical_data_v3' if mastery else 'tactical_data_v2','seed':seed,'depth':depth,'count':count,
             'validation_count':validation_count,'engine_sha256':hash_file(engine),'suite_hashes':suite_hashes}
+    if scaling:config.update(scaling='family_v1',excluded_hashes=excluded_hashes)
     with experiment_lock(out):
         return generate_locked(engine,out,config,attempts,forbidden,resume)
 
@@ -122,7 +129,10 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
     count=config['count'];depth=config['depth'];seed=config['seed']
     mastery=config['schema']=='tactical_data_v3'
     from .mastery import quotas,deficits,targeted_fen,validate_scores
-    target=quotas(count) if mastery else None
+    scaling=bool(config.get('scaling'))
+    if scaling:
+        from .scaling import quotas as scaling_quotas
+    target=(scaling_quotas(count) if scaling else quotas(count)) if mastery else None
     journal=out/'generation_state.json';pool=out/'pool.jsonl'
     if journal.exists():
         if not resume:raise ValueError('Experiment exists; use --resume')
@@ -160,7 +170,8 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
                         print(f'[DATA] attempt {i}/{attempts} | {len(rows)}/{count} | {dict(counts)}',flush=True)
                     # Per-attempt seed makes replays independent of interruption.
                     rng=random.Random(seed*1000003+i)
-                    if mastery and i%4!=1:
+                    trajectory=(i%2==1 if scaling else i%4==1)
+                    if mastery and not trajectory:
                         remaining=deficits(counts,target)
                         keys=list(remaining);weights=[remaining[k]+.05 for k in keys]
                         focus=rng.choices(keys,weights=weights)[0]
@@ -179,12 +190,18 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
                             cursor=i+1;continue
                     else:
                         position=bridge.new(930001,START_FEN)
-                        for _ in range(rng.randint(10,75)):
+                        if scaling and i%4==1:
+                            from .intelligence import OPENING_LINES
+                            for move in rng.choice(OPENING_LINES):
+                                if position['finished'] or move not in position['legal_moves']:break
+                                position=bridge.step(930001,move)
+                        for _ in range(rng.randint(4,95) if scaling else rng.randint(10,75)):
                             if position['finished']:break
                             b=board(position['fen'])
                             from .tactics import square
                             moves=position['legal_moves']
-                            weights=[4 if b[square(m[2:4])]!='.' else 1 for m in moves]
+                            capture_weight=rng.choice((1,2,4)) if scaling else 4
+                            weights=[capture_weight if b[square(m[2:4])]!='.' else 1 for m in moves]
                             position=bridge.step(930001,rng.choices(moves,weights=weights)[0])
                     if position['finished']:cursor=i+1;continue
                     key=canonical(position['fen'])
@@ -212,6 +229,7 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
                          'category':category,'teacher_cp':cp,'evidence':tags,'source':f'generated:{seed}:{i}'}
                     if mastery:
                         row['move_scores']=result[4];validate_scores(row)
+                    if scaling:row['origin']='trajectory' if trajectory else 'synthetic'
                     f.write((json.dumps(row)+'\n').encode('utf-8'));f.flush();os.fsync(f.fileno())
                     rows.append(row);seen.add(key);counts[category]+=1;cursor=i+1
                     if len(rows)%10==0 or len(rows)==count:
@@ -222,7 +240,13 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
     if len(rows)!=count:
         print(f'[DATA] Incomplete pool {len(rows)}/{count}; rerun --resume with larger --attempts.',flush=True)
         raise RuntimeError('Requested dataset not complete; journal preserved')
-    split_rows=stratify(rows,config['validation_count'],seed)
+    if scaling:
+        from .scaling import family_split,verify_families
+        for p,h in config['excluded_hashes'].items():
+            if hash_file(Path(p))!=h:raise RuntimeError('Prior dataset changed during generation')
+        split_rows=family_split(rows,config['validation_count'],seed)
+        family_counts=verify_families({s:[r for r in split_rows if r['split']==s] for s in ('train','validation')})
+    else:split_rows=stratify(rows,config['validation_count'],seed)
     path=out/'dataset.jsonl';tmp=path.with_suffix('.tmp')
     with tmp.open('w',encoding='utf-8',newline='\n') as f:
         for r in split_rows:f.write(json.dumps(r)+'\n')
@@ -236,6 +260,7 @@ def generate_locked(engine,out,config,attempts,forbidden,resume):
     if mastery:
         meta.update(target_quotas=target,quota_shortfalls=deficits(counts,target),
                     quota_relaxed=any(counts[k]>v for k,v in target.items()),score_schema='all_legal_cp_v1')
+    if scaling:meta.update(family_counts=family_counts,origins=dict(Counter(r['origin'] for r in split_rows)),family_policy='coarse_material_king_zones_v1')
     atomic_json(out/'dataset_meta.json',meta)
     print('[DATA] Complete:',meta,flush=True)
 
@@ -245,10 +270,11 @@ def main():
     p.add_argument('--count',type=int,default=600);p.add_argument('--validation-count',type=int)
     p.add_argument('--depth',type=int,default=3);p.add_argument('--seed',type=int,default=9312026)
     p.add_argument('--attempts',type=int,default=30000);p.add_argument('--resume',action='store_true')
+    p.add_argument('--scaling',action='store_true');p.add_argument('--exclude',type=Path,nargs='*',default=[])
     p.add_argument('--mastery',action='store_true',help='Full teacher scores and targeted category quotas')
     a=p.parse_args()
     val=a.validation_count if a.validation_count is not None else max(2,round(a.count/6))
-    if not a.engine.is_file() or not 10<=a.count<=20000 or not 2<=a.depth<=5 or not a.count<=a.attempts<=2000000 or not 2<=val<=a.count-2:p.error('Invalid engine or budget')
-    generate(a.engine,output_dir(a.output,a.resume),a.count,a.depth,a.seed,a.attempts,val,a.resume,a.mastery)
+    if not a.engine.is_file() or not 10<=a.count<=(60000 if a.scaling else 20000) or not 2<=a.depth<=5 or not a.count<=a.attempts<=2000000 or not 2<=val<=a.count-2:p.error('Invalid engine or budget')
+    generate(a.engine,output_dir(a.output,a.resume),a.count,a.depth,a.seed,a.attempts,val,a.resume,a.mastery or a.scaling,a.scaling,a.exclude)
 
 if __name__=='__main__':main()
