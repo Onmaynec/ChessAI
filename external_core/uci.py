@@ -1,6 +1,6 @@
 """Persistent bounded UCI process, with no website/client automation."""
 from __future__ import annotations
-import queue,re,subprocess,threading,time
+import os,queue,re,subprocess,threading,time
 from collections import deque
 from pathlib import Path
 
@@ -13,6 +13,7 @@ class ProtocolError(RuntimeError):pass
 class UCI:
     def __init__(self,exe,extra=(),timeout=20):
         exe=Path(exe).resolve()
+        self.cwd=exe.parent
         self.proc=subprocess.Popen([str(exe),*extra],cwd=exe.parent,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace',bufsize=1)
         self.lines=queue.Queue(maxsize=8192);self.tail=deque(maxlen=30);self.options={};self.name=None
@@ -47,7 +48,7 @@ class UCI:
             except queue.Empty:raise ProtocolError('UCI timeout: '+' | '.join(self.tail)) from None
             if line is None:raise ProtocolError('UCI process exited: '+' | '.join(self.tail))
             self.tail.append(line)
-            if 'CRITICAL ERROR' in line.upper():raise ProtocolError(line)
+            if 'CRITICAL ERROR' in line.upper() or 'cannot read weights' in line.lower() or re.match(r'^(?:info string )?error\b',line,re.I):raise ProtocolError('Engine error: '+line)
             yield line
             if done(line):return
             if time.monotonic()>=deadline:raise ProtocolError('UCI deadline exceeded')
@@ -119,7 +120,13 @@ def configured(name,profile='balanced',weights=None):
             if '0.32.1' not in engine.name:raise ProtocolError('Unexpected Lc0 identity')
             w=Path(weights).resolve() if weights else folder/m['weights']
             if not w.is_file():raise FileNotFoundError(w)
-            engine.set_option('WeightsFile',str(w));engine.set_option('Backend','cuda-fp16')
+            # Lc0 0.32.1 uses narrow fopen; avoid Unicode in the UCI path.
+            try:weight_arg=os.path.relpath(w.resolve(),engine.cwd)
+            except ValueError:weight_arg=str(w.resolve())
+            if not weight_arg.isascii():
+                raise ProtocolError('Lc0 network path must be ASCII relative to engine cwd; put custom weights in the engine directory with an ASCII filename')
+            print('[LC0] WeightsFile:',weight_arg,flush=True)
+            engine.set_option('WeightsFile',weight_arg);engine.set_option('Backend','cuda-fp16')
             engine.set_option('Threads',2,False);engine.set_option('MinibatchSize',32,False)
             engine.set_option('UCI_ShowWDL','true',False)
             engine.weights_sha256=digest(w)
