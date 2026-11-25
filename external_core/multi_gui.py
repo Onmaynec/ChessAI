@@ -26,7 +26,7 @@ class Lab:
         self.stop=threading.Event();self.worker=None;self.state=None;self.human=False;self.selected=None;self.last=None
         self.closing=False;self.flip=tk.BooleanVar(value=False);self.top=tk.BooleanVar(value=False)
         self.status=tk.StringVar(value='Ready — local games only')
-        root.title('Chess AI | Multi-Engine Lab 0.9.3.5.1');root.configure(bg=BG);root.minsize(820,580)
+        root.title('Chess AI | Multi-Engine Lab 0.9.3.5.1');root.configure(bg=BG);root.minsize(820,640);root.geometry('1000x730')
         style=ttk.Style(root);style.theme_use('clam')
         style.configure('.',background=PANEL,foreground=FG,fieldbackground=PANEL)
         style.map('TCombobox',fieldbackground=[('readonly',PANEL)],foreground=[('readonly',FG)])
@@ -49,10 +49,13 @@ class Lab:
                'profile':tk.StringVar(value='balanced'),'checkpoint':tk.StringVar(value=default),
                'device':tk.StringVar(value='cpu'),'weights':tk.StringVar(value=''),'multipv':tk.StringVar(value='1')}
             self.fields[side]=v
-            for key,values in (('kind',options),('profile',list(PROFILES)),('checkpoint',paths),('device',['cpu','cuda']),('multipv',['1','2','3'])):
-                ttk.Label(f,text=key).pack(anchor='w')
-                cb=ttk.Combobox(f,textvariable=v[key],values=values,state='readonly');cb.pack(fill='x');self.locked.append(cb)
-            b=ttk.Button(f,text='Choose Lc0 weights (optional)',command=lambda v=v:self.weights(v));b.pack(fill='x',pady=2);self.locked.append(b)
+            f.columnconfigure(1,weight=1)
+            for i,(key,values) in enumerate((('kind',options),('profile',list(PROFILES)),('checkpoint',paths),('device',['cpu','cuda']),('multipv',['1','2','3']))):
+                ttk.Label(f,text=key).grid(row=i,column=0,sticky='w',padx=4,pady=1)
+                cb=ttk.Combobox(f,textvariable=v[key],values=values,state='readonly',width=22)
+                cb.grid(row=i,column=1,sticky='ew',padx=4,pady=1);self.locked.append(cb)
+            b=ttk.Button(f,text='Choose Lc0 weights (optional)',command=lambda v=v:self.weights(v))
+            b.grid(row=5,column=0,columnspan=2,sticky='ew',padx=4,pady=2);self.locked.append(b)
         self.fen=tk.StringVar(value=START_FEN)
         ttk.Label(right,text='Starting FEN').pack(anchor='w');e=ttk.Entry(right,textvariable=self.fen);e.pack(fill='x');self.locked.append(e)
         row=ttk.Frame(right);row.pack(fill='x',pady=6)

@@ -51,7 +51,8 @@ class Player:
     def open_uci(self):
         e=self.stack.enter_context(configured(self.key,self.spec['profile'],self.spec.get('weights') or None))
         e.new_game();self.engine=e
-        self.identity.update(engine=e.name,weights_sha256=getattr(e,'weights_sha256',None))
+        manifest=json.loads((DEST/self.key/'installed.json').read_text(encoding='utf-8'))
+        self.identity.update(engine=e.name,weights_sha256=getattr(e,'weights_sha256',None),archive_sha256=manifest['archive_sha256'])
 
     def move(self,state,initial,moves,fens,stop):
         if self.engine is not None:
