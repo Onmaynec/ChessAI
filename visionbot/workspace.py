@@ -271,6 +271,7 @@ class Workspace:
         self.label(self.model_hint,'Выбранная модель','Selected model',size=10,color=MUTED).pack(anchor='w',padx=8,pady=(2,0))
         self.model_hint_text=StableStringVar(value='')
         self.label(self.model_hint,variable=self.model_hint_text,size=11).pack(anchor='w',padx=8,pady=(0,2))
+        self.button(c,'Multi-Engine Lab · локальная доска','Multi-Engine Lab · local board',self.open_multi_engine,width=240).pack(fill='x',padx=17,pady=6)
         self.section(c,2,'Область доски','Board region')
         row=self.row(c)
         b=self.button(row,'▣  Выделить область','▣  Select region',self.calibrate,width=150)

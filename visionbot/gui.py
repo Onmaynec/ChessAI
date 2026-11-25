@@ -202,7 +202,21 @@ class App(Workspace):
         finally:
             if not self._closing:self.root.after(40,self.poll_shortcuts)
 
+    def open_multi_engine(self):
+        import subprocess
+        if self.worker and self.worker.is_alive():
+            messagebox.showwarning('Multi-Engine','Stop Vision session first.');return
+        child=getattr(self,'_multi_engine_child',None)
+        if child is not None and child.poll() is None:
+            messagebox.showinfo('Multi-Engine','Local lab is already open.');return
+        try:
+            self._multi_engine_child=subprocess.Popen([sys.executable,'-B','-m','external_core.multi_gui','--core',str(self.engine)],cwd=ROOT)
+        except OSError as exc:messagebox.showerror('Multi-Engine',str(exc))
+
     def launch(self, attach_any_position: bool = False):
+        child=getattr(self,'_multi_engine_child',None)
+        if child is not None and child.poll() is None:
+            messagebox.showwarning('Multi-Engine','Close local lab before using the Vision session.');return
         if getattr(self,'_launching',False) or getattr(self,'_closing',False):return
         self._launching=True
         try:self._launch(attach_any_position)
