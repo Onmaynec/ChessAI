@@ -41,6 +41,7 @@ class ScrollViewport(tk.Frame):
         self._width = None
         self._region = None
         self._pending = None
+        self._restore_job = None
         self._scrollbar_visible = False
         self.canvas.bind('<Configure>', self._resize, add='+')
         self.body.bind('<Configure>', self._schedule_region, add='+')
@@ -79,11 +80,22 @@ class ScrollViewport(tk.Frame):
             self.canvas.yview_scroll(-int(event.delta / 120), 'units')
             return 'break'
 
+    def restore_scroll(self, fraction):
+        # Wait for debounced form/board geometry and scroll-region updates.
+        if self._restore_job is not None:self.after_cancel(self._restore_job)
+        def apply():
+            self._restore_job=None
+            self.canvas.yview_moveto(max(0.,min(1.,float(fraction))))
+        self._restore_job=self.after(200,apply)
+
     def reset_scroll(self):
-        self.canvas.yview_moveto(0)
+        self.restore_scroll(0)
 
     def destroy(self):
         if self._pending is not None:
             self.after_cancel(self._pending)
             self._pending = None
+        if self._restore_job is not None:
+            self.after_cancel(self._restore_job)
+            self._restore_job=None
         super().destroy()
