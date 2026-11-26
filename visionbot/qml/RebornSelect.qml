@@ -31,6 +31,7 @@ ComboBox {
         border.color: control.activeFocus ? theme.accent : theme.border
     }
     delegate: ItemDelegate {
+        id: option
         required property int index
         required property var modelData
         width: control.width
@@ -46,7 +47,7 @@ ComboBox {
         }
         background: Rectangle {
             radius: 5
-            color: parent.highlighted || parent.hovered ? theme.active : theme.panel
+            color: option.highlighted || option.hovered ? theme.active : theme.panel
         }
     }
     popup: Popup {
