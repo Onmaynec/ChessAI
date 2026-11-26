@@ -46,6 +46,9 @@ def fit_rect(value, screens, key):
 def clean(data):
     data = data if isinstance(data,dict) else {}
     result = {'mode': 'standard', 'windows': {}, 'topmost': {}}
+    # Optional field: preserve the original schema for older settings.
+    if type(data.get('reduced_motion')) is bool:
+        result['reduced_motion'] = data['reduced_motion']
     if data.get('mode') in MODES:
         result['mode'] = data['mode']
     windows = data.get('windows')
@@ -99,6 +102,12 @@ class WorkspacePreferences:
             self.data['mode'] = mode
             return True
         return False
+
+    def set_reduced_motion(self, value):
+        if type(value) is not bool:
+            return False
+        self.data['reduced_motion'] = value
+        return True
 
     def set_topmost(self,key,value):
         if key in ('main',*PANELS) and type(value) is bool:
