@@ -21,9 +21,10 @@ from .analysis_view import report_sections
 from neural.agent_profiles import ALIASES
 from .design import (BG, PANEL, FIELD, BORDER, TEXT, MUTED, DIM, ACCENT,
                      ACCENT_TEXT, HOVER, SURFACE_HOVER, ACTIVE, TRACK, GREEN, RED,
-                     BOARD_LIGHT, BOARD_DARK, STOP_BG, STOP_HOVER, STOP_BORDER,
+                     BOARD_LIGHT, BOARD_DARK, STOP_BG, STOP_HOVER, STOP_BORDER, WARNING,
                      FONT, MONO, RADIUS, button_style)
 from .log_model import matches, select_entries
+from .presentation_rules import preview_layout, form_columns, session_state, short_text
 
 GLYPHS=dict(zip('KQRBNPkqrbnp','♔♕♖♗♘♙♚♛♜♝♞♟'))
 
@@ -88,6 +89,11 @@ class Workspace:
         self._log_search_job=None
         self._visible_entries=deque()
         self._applied_query=''
+        self._preview_layout_key=None
+        self._form_layout_key=None
+        self._preview_resize_job=None
+        self._form_resize_job=None
+        self._page_scroll={}
         self.filter_var=StableStringVar(value='all')
         self._labels=[]
         self._locked=[]
@@ -98,12 +104,15 @@ class Workspace:
             if not isinstance(settings,dict): settings={}
         except (OSError,ValueError): settings={}
         self.lang=StableStringVar(value='EN' if settings.get('language')=='EN' else 'RU')
-        self.opacity=tk.DoubleVar(value=clamp_alpha(settings.get('opacity',.85)))
+        self.opacity=tk.DoubleVar(value=clamp_alpha(settings.get('opacity',1.0)))
         self.preview=tk.BooleanVar(value=bool(settings.get('preview',True)))
         self.autoscroll=tk.BooleanVar(value=bool(settings.get('follow_log',True)))
         self.topmost.set(bool(settings.get('topmost',self.topmost.get())))
         self.log_collapsed=tk.BooleanVar(value=bool(settings.get('log_collapsed',False)))
         self.state_text=StableStringVar(value=self.tr('Ожидание','Idle'))
+        self.latest_event_text=StableStringVar(value='—')
+        self.log_count=StableStringVar(value='0')
+        self.page_title=StableStringVar(value='')
         self.summary_text=StableStringVar(value='')
         self.board_text=StableStringVar(value='')
         self.fen_text=StableStringVar(value='—')
@@ -147,9 +156,10 @@ class Workspace:
         bar.grid(row=0,column=0,columnspan=2,sticky='ew',padx=10,pady=(9,4))
         self.label(bar,'VISION BOT','VISION BOT',size=14,bold=True).pack(side='left',padx=12,pady=5)
         self.label(bar,version,version,color=MUTED,size=11).pack(side='left',padx=3)
-        self.button(bar,'Оверлеи','Overlays',lambda:self.navigate('settings') if not self.compact else self.toggle_overlay(),width=88).pack(side='right',padx=6,pady=5)
+        self.button(bar,'Компакт','Compact',self.toggle_overlay,width=78).pack(side='right',padx=6,pady=5)
         self.header_stop=self.button(bar,'Стоп','Stop',self.stop,width=66)
         self.header_stop.pack(side='right',padx=3,pady=5)
+        self.header_stop.configure(fg_color=STOP_BG,hover_color=STOP_HOVER,border_color=STOP_BORDER,text_color=RED)
         self.statusbar=self.card(self.full)
         self.statusbar.grid(row=1,column=1,sticky='ew',padx=(0,10),pady=(4,5))
         self.status_cells=[]
@@ -162,7 +172,7 @@ class Workspace:
         self.side=self.card(self.full)
         self.side.grid(row=1,column=0,rowspan=4,sticky='ns',padx=(10,8),pady=(4,10))
         self.nav={}
-        self.nav_names={'home':('Сессия','Session'),'vision':('Видение','Vision'),'analysis':('Анализ','Analysis'),
+        self.nav_names={'home':('Сессия','Session'),'vision':('Доска','Board'),'analysis':('Анализ','Analysis'),
                         'log':('Журнал','Log'),'settings':('Настройки','Settings')}
         for key,(ru,en) in self.nav_names.items():
             b=self.button(self.side,ru,en,lambda k=key:self.navigate(k),width=125)
@@ -195,6 +205,7 @@ class Workspace:
         self.attach.grid(row=0,column=1,sticky='ew',padx=4,pady=6)
         self.stop_button=self.button(self.action_dock,'■ Стоп','■ Stop',self.stop,width=58)
         self.stop_button.grid(row=0,column=2,sticky='ew',padx=(4,8),pady=6)
+        self.stop_button.configure(fg_color=STOP_BG,hover_color=STOP_HOVER,border_color=STOP_BORDER,text_color=RED)
         self.build_session()
         self.build_vision()
         self.build_analysis()
@@ -207,6 +218,8 @@ class Workspace:
         r.bind('<Configure>',self.on_resize,add='+')
         r.bind('<Escape>',lambda _:self.stop(),add='+')
         r.bind('<Control-Shift-m>',lambda _:self.toggle_overlay(),add='+')
+        for index,key in enumerate(self.nav_names,1):
+            r.bind(f'<Control-Key-{index}>',lambda _,k=key:self.navigate(k) if not self.compact else None,add='+')
         self.refresh_workspace()
 
     def card(self,parent):
@@ -294,6 +307,7 @@ class Workspace:
         self.info.pack(side='right',padx=4)
         self.section(c,3,'Настройки партии','Game settings')
         row=self.row(c)
+        self.option_row=row
         self.option_cells=[]
         options=[
             ('Сторона','Side',self.color,[('white','Белые','White'),('black','Чёрные','Black')]),
@@ -307,6 +321,7 @@ class Workspace:
             self.choice(cell,ru,en,var,values,lock=True)
             self.option_cells.append(cell)
         toggles=self.row(c)
+        self.toggle_row=toggles
         toggles.grid_columnconfigure((0,1),weight=1,uniform='toggles')
         self.toggle_cells=[]
         for i,(ru,en,var,command,lock) in enumerate([
@@ -331,6 +346,7 @@ class Workspace:
         self.label(c,'Запуск и подключение — в нижней панели.','Start and join are in the bottom action bar.',color=MUTED,size=11,wrap=280).pack(anchor='w',padx=17,pady=(0,5))
         self.warning_label=self.label(c,variable=self.notice,color=RED,wrap=300,size=11)
         self.notice.trace_add('write',lambda *_:self.show_notice())
+        c.bind('<Configure>',self.schedule_form_layout,add='+')
 
     def show_notice(self):
         if self.notice.get():self.warning_label.pack(anchor='w',padx=14,pady=(0,5))
@@ -345,10 +361,13 @@ class Workspace:
         toggle.pack(side='right',padx=3)
         self.preview_body=self.row(c)
         self.board=tk.Canvas(self.preview_body,width=186,height=186,bg=PANEL,highlightthickness=0)
-        self.board.pack(side='left',padx=(2,8),pady=2)
+        self.board.grid(row=0,column=0,padx=(2,8),pady=2,sticky='n')
         self.board.bind('<Configure>',self.schedule_board)
         info=self.ctk.CTkFrame(self.preview_body,fg_color='transparent')
-        info.pack(side='left',fill='both',expand=True,padx=3)
+        self.preview_info=info
+        info.grid(row=0,column=1,sticky='nsew',padx=3)
+        self.preview_body.grid_columnconfigure(1,weight=1)
+        self.preview_body.bind('<Configure>',self.schedule_preview_layout,add='+')
         self.label(info,'Источник позиции','Position source',color=MUTED,size=11).pack(anchor='w')
         self.recognition=self.label(info,variable=self.fen_short,color=TEXT,size=11,wrap=125)
         self.recognition.pack(anchor='w',pady=(1,5))
@@ -359,6 +378,50 @@ class Workspace:
         self.fen_label=self.label(c,variable=self.fen_text,color=MUTED,wrap=280,size=10)
         self.fen_label.pack(anchor='w',padx=14,pady=(0,8))
         self.toggle_preview()
+
+    def schedule_preview_layout(self,event=None):
+        if self._preview_resize_job is not None:self.root.after_cancel(self._preview_resize_job)
+        self._preview_resize_job=self.root.after(90,self.apply_preview_layout)
+
+    def apply_preview_layout(self):
+        self._preview_resize_job=None
+        if not self.preview_body.winfo_ismapped():return
+        scale=self.window_scale()
+        width=self.preview_body.winfo_width()/scale
+        if width<80:return
+        plan=preview_layout(width)
+        if plan==self._preview_layout_key:return
+        self._preview_layout_key=plan
+        self.preview_body.grid_columnconfigure(0,weight=1 if plan.stacked else 0)
+        self.preview_body.grid_columnconfigure(1,weight=0 if plan.stacked else 1)
+        self.board.grid_configure(row=0,column=0,columnspan=2 if plan.stacked else 1,
+                                  padx=0 if plan.stacked else (2,8))
+        self.preview_info.grid_configure(row=1 if plan.stacked else 0,column=0 if plan.stacked else 1,
+                                         columnspan=2 if plan.stacked else 1,pady=(6,2) if plan.stacked else 0)
+        self.board.configure(width=round(plan.size*scale),height=round(plan.size*scale))
+        self.schedule_board()
+
+    def schedule_form_layout(self,event=None):
+        if self._form_resize_job is not None:self.root.after_cancel(self._form_resize_job)
+        self._form_resize_job=self.root.after(90,self.apply_form_layout)
+
+    def apply_form_layout(self):
+        self._form_resize_job=None
+        if not self.session.winfo_ismapped():return
+        width=self.option_row.winfo_width()/self.window_scale()
+        if width<80:return
+        columns=form_columns(width)
+        if columns==self._form_layout_key:return
+        self._form_layout_key=columns
+        for row in (self.option_row,self.toggle_row):
+            for col in range(3):
+                row.grid_columnconfigure(col,weight=1 if col<columns else 0,
+                                         uniform='form' if col<columns else '')
+        for i,cell in enumerate(self.option_cells):
+            cell.grid_configure(row=i//columns,column=i%columns,
+                                columnspan=columns if i==2 else 1)
+        for i,cell in enumerate(self.toggle_cells):
+            cell.grid_configure(row=i//columns,column=i%columns,columnspan=1)
 
     def build_analysis(self):
         c=self.analysis_card
@@ -394,11 +457,12 @@ class Workspace:
             mapping={self.tr(a,b):v for v,a,b in self.filter_values}
             if value in mapping:
                 self.filter_var.set(mapping[value]);self.filter_log(mapping[value])
-        self.filter_choice=self.ctk.CTkSegmentedButton(filters,values=[self.tr(a,b) for _,a,b in self.filter_values],
-                command=select,height=27,corner_radius=RADIUS,fg_color=FIELD,selected_color=ACTIVE,
-                selected_hover_color=TRACK,unselected_color=FIELD,unselected_hover_color=BORDER,
-                font=(FONT,11))
-        self.filter_choice.pack(side='left',fill='x',expand=True)
+        self.filter_choice=self.ctk.CTkOptionMenu(filters,values=[self.tr(a,b) for _,a,b in self.filter_values],
+                command=select,height=30,corner_radius=RADIUS,fg_color=FIELD,button_color=BORDER,
+                button_hover_color=ACTIVE,dropdown_fg_color=PANEL,dropdown_hover_color=ACTIVE,
+                dropdown_text_color=TEXT,text_color=TEXT,font=(FONT,12),dynamic_resizing=False,width=110)
+        self.filter_choice.pack(side='left',padx=(0,8))
+        self.label(filters,variable=self.log_count,color=MUTED,size=11).pack(side='right')
         self.filter_choice.set(self.tr('Все','All'))
         self._choices.append((self.filter_choice,self.filter_var,self.filter_values))
         self.log_tools=self.ctk.CTkFrame(c,fg_color='transparent')
@@ -407,8 +471,9 @@ class Workspace:
             font=(FONT,12))
         self.label(self.log_tools,'Поиск','Search',size=11,color=MUTED).pack(side='left',padx=(0,5))
         self.log_search.pack(side='left',fill='x',expand=True,padx=(0,4))
-        self.button(self.log_tools,'Копировать','Copy',self.copy_log,width=76).pack(side='left',padx=2)
-        self.button(self.log_tools,'Экспорт','Export',self.export_log,width=65).pack(side='left',padx=2)
+        self.log_actions=self.ctk.CTkFrame(c,fg_color='transparent')
+        self.button(self.log_actions,'Копировать','Copy',self.copy_log,width=76).pack(side='left',padx=(0,4))
+        self.button(self.log_actions,'Экспорт','Export',self.export_log,width=65).pack(side='left',padx=2)
         self.log_options=self.ctk.CTkFrame(c,fg_color='transparent')
         self.switch(self.log_options,'Пауза','Pause',self.log_paused,self.toggle_log_pause)
         self.switch(self.log_options,'Следить','Follow',self.autoscroll,self.follow_log)
@@ -479,6 +544,7 @@ class Workspace:
         self.label(row,'Глубина','Depth',color=MUTED,size=11).pack(side='left')
         self.label(row,variable=self.depth_text).pack(side='right')
         self.label(card,variable=self.detail_text,color=MUTED,wrap=290,size=10).pack(anchor='w',padx=12,pady=(0,4))
+        self.label(card,variable=self.latest_event_text,color=MUTED,wrap=285,size=10).pack(anchor='w',padx=12,pady=(0,4))
         actions=self.row(self.overlay)
         self.overlay_start=self.button(actions,'▶ Вкл. AI','▶ Start AI',self.launch,primary=True,width=75)
         self.overlay_start.pack(side='left',fill='x',expand=True,padx=2)
@@ -494,7 +560,11 @@ class Workspace:
         self.label(self.overlay,'Только компьютерный бот · LAlt+1 / 2','Computer bot only · LAlt+1 / 2',color=MUTED,size=10).pack(anchor='center')
 
     def navigate(self,key):
+        if key not in self.nav_names:return
+        if self.page!=key:
+            self._page_scroll[self.page]=self.viewport.canvas.yview()[0]
         self.page=key
+        self.page_title.set(self.tr(*self.nav_names[key]))
         for k,b in self.nav.items():
             b.configure(fg_color=ACTIVE if k==key else 'transparent',border_width=1 if k==key else 0,border_color=ACCENT if k==key else BORDER)
         self.layout()
@@ -529,11 +599,6 @@ class Workspace:
             self.model_hint.pack(side='right',padx=(4,3))
         else:
             self.system_card.pack_forget();self.model_hint.pack_forget()
-        self.option_cells[0].master.grid_columnconfigure(2,weight=1 if wide else 0,uniform='opts' if wide else '')
-        for i,cell in enumerate(self.option_cells):
-            cell.grid(row=0 if wide else i//2,column=i if wide else i%2,columnspan=1 if wide or i<2 else 2)
-        for i,cell in enumerate(self.toggle_cells):
-            cell.grid(row=i//2,column=i%2,columnspan=1)
         for i in range(4):self.statusbar.grid_columnconfigure(i,weight=1 if wide or i<2 else 0)
         for i,child in enumerate(self.status_cells):
             child.grid(row=0 if wide else i//2,column=i if wide else i%2,pady=4)
@@ -559,25 +624,26 @@ class Workspace:
             panels={'vision':self.vision,'analysis':self.analysis_card,'settings':self.settings}
             panels[self.page].grid(row=0,column=0,columnspan=2,sticky='ew',pady=4)
             if self.page=='analysis':self.analysis.pack(fill='both',padx=14,pady=(4,10))
-        board_size=round((300 if self.page=='vision' and wide else 224 if wide else 158)*scale)
-        self.board.configure(width=board_size,height=board_size)
-        if previous_page!=self.page:self.viewport.reset_scroll()
-        else:self.viewport.canvas.yview_moveto(previous_scroll)
+        self.schedule_preview_layout()
+        self.schedule_form_layout()
+        destination=self._page_scroll.get(self.page,0) if previous_page!=self.page else previous_scroll
+        self.viewport.canvas.yview_moveto(destination)
 
     def set_log_visibility(self, visible):
         self.log_toggle.configure(state='disabled' if self.page=='log' else 'normal',text='⌄' if visible else '⌃')
         if visible:
             self.log.pack_forget();self.log_filters.pack_forget()
-            self.log_tools.pack_forget();self.log_options.pack_forget()
+            self.log_tools.pack_forget();self.log_actions.pack_forget();self.log_options.pack_forget()
             self.log_filters.pack(fill='x',padx=12,pady=3)
             if self.page=='log':
                 self.log_tools.pack(fill='x',padx=12,pady=(2,0))
+                self.log_actions.pack(fill='x',padx=12,pady=(2,0))
                 self.log_options.pack(fill='x',padx=12,pady=(0,2))
             else:
-                self.log_tools.pack_forget();self.log_options.pack_forget()
+                self.log_tools.pack_forget();self.log_actions.pack_forget();self.log_options.pack_forget()
             self.log.pack(fill='both',expand=True,padx=12,pady=(1,7))
         else:
-            self.log_filters.pack_forget();self.log_tools.pack_forget();self.log_options.pack_forget();self.log.pack_forget()
+            self.log_filters.pack_forget();self.log_tools.pack_forget();self.log_actions.pack_forget();self.log_options.pack_forget();self.log.pack_forget()
 
     def toggle_log(self):
         visible=bool(self.log.winfo_manager())
@@ -604,6 +670,8 @@ class Workspace:
             mapping={self.tr(a,b):v for v,a,b in values}
             widget.configure(values=list(mapping))
             widget.set(next((k for k,v in mapping.items() if v==var.get()),str(var.get())))
+        self.log_search.configure(placeholder_text=self.tr('Поиск по журналу','Search journal'))
+        self.page_title.set(self.tr(*self.nav_names[self.page]))
         self.draw_candidates((self._last_event or {}).get('details',{}).get('candidates',[]))
         self.fen_short.set(self.tr('Из телеметрии','Reported FEN') if self._fen else '—')
         if self._fen:self.set_fen(self._fen)
@@ -755,9 +823,10 @@ class Workspace:
         line=(tag,f'[{datetime.datetime.now():%H:%M:%S}] {text}\n')
         evicted=self._messages[0] if len(self._messages)==self._messages.maxlen else None
         self._messages.append(line)
+        self.latest_event_text.set(short_text(text,75))
         if self.log_paused.get():return
         query=self._applied_query
-        remove=bool(evicted and self._visible_entries and evicted==self._visible_entries[0])
+        remove=bool(evicted and self._visible_entries and evicted is self._visible_entries[0])
         append=matches(line,self._filter,query)
         if not (remove or append):return
         follow=self.autoscroll.get() and self.log.yview()[1]>=.999
@@ -770,6 +839,7 @@ class Workspace:
             self.log.insert('end',line[1],tag)
         self.log.configure(state='disabled')
         if follow:self.log.see('end')
+        self.log_count.set(f'{len(self._visible_entries)} / {len(self._messages)}')
 
     def schedule_log_search(self,*_):
         if self._log_search_job is not None:self.root.after_cancel(self._log_search_job)
@@ -780,6 +850,8 @@ class Workspace:
         self.filter_log(self._filter)
 
     def filter_log(self,value):
+        same=value==self._filter and self._applied_query==self.log_query.get()
+        old_view=self.log.yview()[0]
         self._filter=value
         entries=self._paused_messages if self.log_paused.get() else self._messages
         self._applied_query=self.log_query.get()
@@ -788,7 +860,8 @@ class Workspace:
         for tag,line in self._visible_entries:self.log.insert('end',line,tag)
         self.log.configure(state='disabled')
         if self.autoscroll.get():self.log.see('end')
-        else:self.log.yview_moveto(0)
+        else:self.log.yview_moveto(old_view if same else 0)
+        self.log_count.set(f'{len(self._visible_entries)} / {len(entries)}')
 
     def toggle_log_pause(self):
         if self.log_paused.get():self._paused_messages=tuple(self._messages)
@@ -844,12 +917,13 @@ class Workspace:
         self.summary_text.set(self.checkpoint.get()+' · '+self.tr('Белые','White') if self.color.get()=='white' else self.checkpoint.get()+' · '+self.tr('Чёрные','Black'))
         if active and self.panel_overlaps() and not self.ev.is_set():
             self.ev.set();self.add_view_log('error',self.tr('Окно перекрывает доску. Запрошена остановка.','Window overlaps board. Stop requested.'))
-        if active:self.state_text.set(self.tr('Остановка…','Stopping…') if self.ev.is_set() else self.tr('Сессия активна','Session active'))
-        elif self.worker:self.state_text.set(self.tr('● Остановлено','● Stopped'))
-        elif self.rect and self._engine_exists and self._model_exists and self.consent.get():
-            self.state_text.set(self.tr('● Готов к работе','● Ready'))
-        else:self.state_text.set(self.tr('○ Настройка','○ Setup'))
-        state_color=GREEN if active and not self.ev.is_set() else MUTED
+        state=session_state(active,self.ev.is_set(),self.worker is not None,bool(self.rect),
+                            self._engine_exists,self._model_exists,self.consent.get())
+        names={'active':('Сессия активна','Session active'),'stopping':('Остановка…','Stopping…'),
+               'stopped':('Остановлено','Stopped'),'ready':('Готов к работе','Ready'),
+               'setup':('Настройка','Setup')}
+        self.state_text.set(self.tr(*names[state]))
+        state_color=GREEN if state in ('active','ready') else WARNING if state=='stopping' else MUTED
         if getattr(self,'_status_color',None)!=state_color:
             self.status_cells[0].configure(text_color=state_color)
             self._status_color=state_color
