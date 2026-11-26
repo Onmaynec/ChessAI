@@ -5,12 +5,13 @@ Button {
     id: control
     property bool primary: false
     property bool selected: false
-    implicitHeight: 40
+    implicitHeight: Math.max(40, contentItem.implicitHeight + 20)
     implicitWidth: 112
     padding: 12
     hoverEnabled: true
+    Accessible.name: text
     font.family: theme.font
-    font.pixelSize: theme.typeScale.body
+    font.pixelSize: Math.round(theme.typeScale.body * workspaceModel.textScale / 100)
     font.weight: primary ? Font.DemiBold : Font.Normal
     contentItem: Text {
         text: control.text
