@@ -49,6 +49,8 @@ def make_controller(messages=(), fixture=False):
 def create_engine(controller, journal, source):
     from PySide6.QtCore import QUrl
     from PySide6.QtQml import QQmlApplicationEngine
+    from PySide6.QtQuickControls2 import QQuickStyle
+    QQuickStyle.setStyle('Basic')
     from .qt_viewmodel import VisionViewModel
     from . import design
     engine = QQmlApplicationEngine()
