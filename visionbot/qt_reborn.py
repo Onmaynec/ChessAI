@@ -14,6 +14,8 @@ def main():
     if not engine.rootObjects():
         print('[ERROR] Reborn QML failed to load. See Qt messages above.')
         return 1
+    session=engine.rootContext().contextProperty('sessionModel')
+    app.aboutToQuit.connect(session.stop)
     return app.exec()
 
 if __name__ == '__main__':
