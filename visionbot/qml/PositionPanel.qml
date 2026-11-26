@@ -26,6 +26,7 @@ Surface {
             Layout.fillWidth: true
             Layout.maximumWidth: 510
             Layout.preferredHeight: Math.min(510, Math.max(1, panel.availableWidth))
+            Layout.minimumWidth: 0
             Layout.alignment: Qt.AlignHCenter
         }
         Label {
