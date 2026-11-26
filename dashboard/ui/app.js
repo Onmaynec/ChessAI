@@ -10,7 +10,7 @@ const reasonNames = {checkmate:'Шах и мат',stalemate:'Пат',insufficien
 const application = {selected:null, screen:'overview', metric:'value', overview:null, replay:null, replayStep:0, inFlight:false, overlayOpen:false};
 const api = async (url, opts) => {const res=await fetch(url,{cache:'no-store',...opts});let data={};try{data=await res.json()}catch(_){throw Error('Неверный ответ сервера')}if(!res.ok)throw Error(data.detail||data.message||('HTTP '+res.status));return data};
 function toast(text){const el=$('toast');el.textContent=text;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4800)}
-function navigate(screen){application.screen=screen;qsa('.screen').forEach(e=>e.classList.toggle('hidden',e.id!=='screen-'+screen));qsa('.nav-item').forEach(e=>e.classList.toggle('selected',e.dataset.screen===screen));$('breadcrumb').textContent={overview:'Обзор обучения',games:'Партии и анализ',analysis:'Диагностика модели',runs:'История запусков',guide:'Справка'}[screen];if(screen==='games')loadGames();if(screen==='runs')renderRuns();if(screen==='analysis')loadAnalysis()}
+function navigate(screen){application.screen=screen;qsa('.screen').forEach(e=>e.classList.toggle('hidden',e.id!=='screen-'+screen));qsa('.nav-item').forEach(e=>e.classList.toggle('selected',e.dataset.screen===screen));$('breadcrumb').textContent={overview:'Обзор обучения',games:'Партии и анализ',analysis:'Диагностика модели',runs:'История обучения',models:'Каталог моделей',guide:'Справка'}[screen];if(screen==='games')loadGames();if(screen==='runs')renderRuns();if(screen==='analysis')loadAnalysis();if(screen==='models')loadModels()}
 function classResult(result){return result==='1-0'||result==='0-1'?'win':result==='1/2-1/2'?'draw':'pending'}
 function graph(container, values, {accent='#a8eb7c',height=245,unit='',ymin=null}={}){
   const vals=values.map(Number).filter(Number.isFinite);
@@ -33,12 +33,12 @@ function renderOverview(d){
   const picker=$('run-picker');
   const old=picker.value;
   picker.innerHTML=d.runs.length ? d.runs.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('') : '<option value="">Нет запусков</option>';
-  application.selected=d.selected||null; picker.value=d.selected||'';
+  application.selected=d.selected||null; picker.value=d.selected||''; picker.title=d.selected||'';
   const st=d.state||{},c=st.counters||{},meta=d.metadata||{},cfg=meta.config||{};
   const state=st.status||'unknown';
   const isRunning=d.process?.active && d.process.run===d.selected;
   const interrupted=state==='running' && !isRunning;
-  $('run-title').textContent=d.selected ? d.selected : 'Обучение ещё не запускалось';
+  $('run-title').textContent=d.selected ? (d.runs.find(r=>r.id===d.selected)?.name||'ChessNet · PPO') : 'Обучение ещё не запускалось';
   $('run-detail').textContent=d.selected ? `Итерация ${st.iteration||0} · ${st.phase||'ожидание'} · ${st.device||'неизвестно'} · ${fmt(meta.parameters)} параметров` : 'Создайте первый эксперимент, чтобы увидеть реальные показатели.';
   $('status-badge').textContent=d.selected ? (interrupted?'ПРЕРВАНО':statusNames[state]||state) : 'НЕ ЗАПУЩЕНО';$('status-badge').className='status-badge '+(d.selected?state:'');
   $('banner-symbol').textContent=state==='completed'?'✓':state==='failed'?'!':isRunning?'◈':'◎';
@@ -282,3 +282,30 @@ document.addEventListener('click',e=>{
   }
 });
 
+
+let catalogRows=[];let catalogBusy=false;
+const modelStatuses={active:'Рабочая PPO',retained:'Сохранённая лучшая',specialist:'Специализация',candidate:'Экспериментальная',external:'Внешний движок',archive:'Архив',duplicate:'Точная копия файла'};
+async function loadModels(){
+  if(catalogBusy)return;catalogBusy=true;
+  const el=$('models-list');el.textContent='Чтение локального каталога и SHA-256…';
+  try{const data=await api('/api/models');catalogRows=data.models||[];renderModels()}
+  catch(e){el.textContent='Каталог: '+e.message}finally{catalogBusy=false}
+}
+function renderModels(){
+  const show=$('models-archive').checked;
+  const query=$('models-search').value.trim().toLowerCase();
+  const rows=catalogRows.filter(m=>(show||m.selectable)&&(!query||[m.label,m.role,m.architecture,m.source,m.id].join(' ').toLowerCase().includes(query)));
+  $('models-count').textContent=rows.length+' из '+catalogRows.length+' файлов / движков';
+  $('models-list').innerHTML=rows.length?rows.map(m=>'<article class="catalog-card">'+
+    '<div class="catalog-top"><span class="catalog-tag">'+esc(modelStatuses[m.status]||m.status)+'</span><span>'+esc(m.version?'v'+m.version:'Без номера релиза')+'</span></div>'+
+    '<h2>'+esc(m.name)+'</h2><p>'+esc(m.role)+'</p>'+
+    '<div class="catalog-meta"><span>Ревизия <b>'+esc(m.revision)+'</b></span><span>Архитектура <b>'+esc(m.architecture)+'</b></span>'+
+    (m.selected_epoch?'<span>Эпоха <b>'+esc(m.selected_epoch)+'</b></span>':'')+
+    (m.validation_top1!=null?'<span>Validation top-1 <b>'+num(100*m.validation_top1,1)+'%</b></span>':'')+
+    (m.trainer_version?'<span>Версия тренера <b>'+esc(m.trainer_version)+'</b></span>':'')+'</div>'+
+    '<details><summary>Технические сведения</summary><p>'+esc(m.path)+'</p><p>SHA-256: '+esc(m.sha256||'проверка не завершена')+'</p><p>'+esc(m.duplicate_of?'Точная копия: '+m.duplicate_of:m.source||'')+'</p>'+
+    (m.weights?'<p>Веса: '+esc(m.weights)+'</p>':'')+'</details></article>').join(''):'<div class="panel empty-panel">Нет подходящих моделей</div>';
+}
+$('models-search').oninput=renderModels;
+$('models-archive').onchange=renderModels;
+$('models-refresh').onclick=loadModels;

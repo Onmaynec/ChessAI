@@ -41,7 +41,9 @@ class Lab:
         ttk.Checkbutton(left,text='Flip board',variable=self.flip,command=self.draw).pack(side='left')
         ttk.Checkbutton(left,text='Always on top',variable=self.top,command=lambda:root.attributes('-topmost',self.top.get())).pack(side='left',padx=8)
         options=['Human']+(['Stockfish 19'] if installed('stockfish') else [])+(['Leela Chess Zero'] if installed('lc0') else [])+['ChessNet Policy','ChessNet Hybrid']
-        paths=checkpoints();default=next((p for p in paths if p.endswith('latest.pt')),paths[0] if paths else '')
+        from neural.model_catalog import inventory
+        self.catalog={r['label']+' · '+r['id'].split('/')[-3] if r.get('run_id') else r['label']:r['path'] for r in inventory(ROOT) if r['selectable'] and r['status']!='external'}
+        paths=list(self.catalog);default=next((label for label,path in self.catalog.items() if path.endswith('/latest.pt')),paths[0] if paths else '')
         self.fields={};self.locked=[]
         for side,name in (('w','WHITE'),('b','BLACK')):
             f=ttk.LabelFrame(right,text=name);f.pack(fill='x',pady=(0,7),ipadx=4,ipady=3)
@@ -123,7 +125,7 @@ class Lab:
         for spec in specs.values():
             spec['multipv']=int(spec['multipv'])
             if spec['kind'].startswith('ChessNet'):
-                p=ROOT/spec['checkpoint']
+                p=ROOT/self.catalog.get(spec['checkpoint'],'__missing__')
                 if not p.is_file():messagebox.showerror('Checkpoint','Select a checkpoint',parent=self.root);return
                 spec['checkpoint']=str(p)
         if sum(s['kind']=='Leela Chess Zero' for s in specs.values())+sum(s['kind'].startswith('ChessNet') and s['device']=='cuda' for s in specs.values())>1:

@@ -37,6 +37,7 @@ class App(Workspace):
         self.consent=tk.BooleanVar(value=False)
         self.external_profile=tk.StringVar(value='balanced')
         self._active_external=False
+        self._active_fixed=False
         self.train=tk.BooleanVar(value=False)
         self.resume=tk.BooleanVar(value=True)
         self.turn=tk.StringVar(value='auto')
@@ -64,9 +65,9 @@ class App(Workspace):
     def on_agent_change(self,event=None):
         name=self.checkpoint.get()
         from .external_session import EXTERNAL
-        if self.worker is not None and self.worker.is_alive() and (self._active_external or name in EXTERNAL):
+        if self.worker is not None and self.worker.is_alive() and (self._active_fixed or name in EXTERNAL or name not in ALIASES):
             self.checkpoint.set(self._active_selection)
-            self.agent_picker.set(self._active_selection)
+            self.agent_picker.set(self.selected_model_label())
             self.logline('Останови текущую партию перед сменой типа движка.')
             return
         if self.worker is not None and self.worker.is_alive():
@@ -241,7 +242,11 @@ class App(Workspace):
         from .external_session import EXTERNAL,ExternalRecovery,input_spec,computer_title
         from .recovery import RecoveryStore
         from botlab.session import BotLabSession
+        self.refresh_model_catalog()
         selection=self.checkpoint.get();external=selection in EXTERNAL
+        entry=next((r for r in self.catalog_entries if r['key']==selection),None)
+        if entry is None:messagebox.showerror('Модель','Выбери доступную модель из каталога.');return
+        candidate=entry['status']=='candidate'
         game_run=self.run;factory=BotLabSession;store_factory=RecoveryStore
         if external:
             try:ck,game_run,factory=input_spec(selection,self.external_profile.get())
@@ -249,6 +254,10 @@ class App(Workspace):
             store_factory=ExternalRecovery
             if not messagebox.askyesno('Authorized computer test',
                 'Confirm written authorization from Chess.com for automated testing, a computer-only opponent, and that Scaling/PPO/GPU training is stopped. No human games.',parent=self.root):return
+        elif candidate:
+            ck=ROOT/entry['path']
+            game_run=ROOT/'model_catalog_sessions'/entry['sha256']
+            if not ck.is_file():messagebox.showerror('Модель','Кандидат не найден');return
         else:ck=self.run/'checkpoints'/selection
         is_resume=not attach_any_position and (self.resume.get() if hasattr(self, 'resume') else True) and store_factory(game_run,self.color.get()).exists()
         if not ck.is_file() and not is_resume:messagebox.showerror('Checkpoint',f'Не найден:\n{ck}');return
@@ -267,7 +276,7 @@ class App(Workspace):
             messagebox.showwarning('Vision Bot','Move the window outside the calibrated board.')
             return
         self.ev.clear()
-        if self.train.get() and not external:
+        if self.train.get() and not external and not candidate:
             try:
                 from .trainer import ensure_selfplay
                 self.logline(ensure_selfplay(RUN_ID,self.engine,500))
@@ -276,7 +285,7 @@ class App(Workspace):
                 return
         self.path.write_text(json.dumps({'rect':self.rect,'color':self.color.get()},indent=2),encoding='utf-8')
         chosen_color=self.color.get()
-        chosen_phantom=bool(self.phantom.get()) if hasattr(self,'phantom') else False
+        chosen_phantom=bool(self.phantom.get()) if hasattr(self,'phantom') and not candidate and not external else False
         chosen_resume=(self.resume.get() if hasattr(self,'resume') else True)
         chosen_turn={'auto':None,'white':'w','black':'b'}[(self.turn.get() if hasattr(self,'turn') else 'auto')]
         # Topmost controls must not cover a square: the screenshot recognizer
@@ -299,7 +308,8 @@ class App(Workspace):
             messagebox.showerror('Не удалось активировать Chess.com',str(exc))
             self.logline('Локальное самообучение (если запущено) не остановлено.')
             return
-        self._active_external=external;self._active_selection=selection
+        self._active_external=external;self._active_fixed=external or candidate;self._active_selection=selection
+        self.logline('Выбранная модель: '+entry['label']+' · '+entry['architecture'])
         self.logline('Внешний UCI: '+selection+' · '+self.external_profile.get() if external else 'Vision: переключение нейросетей во время партии включено')
         self.logline(f'Браузер активирован: {browser.title}')
         chosen_level='deep' if self.analysis_mode.get().startswith('Глубокий') else 'standard'
@@ -319,11 +329,12 @@ class App(Workspace):
                                session_factory=factory,recovery_enabled=True,store_factory=store_factory,
                                external_authorized=external)
             self.bot=bot
-            if getattr(self,'agent_pending_on_start',None):
+            if getattr(self,'agent_pending_on_start',None) and not (external or candidate):
                 bot.request_agent_switch(self.agent_pending_on_start)
                 self.agent_pending_on_start=None
             try:bot.run()
             finally:self.bot=None
+        self.agent_pending_on_start=None
         self.worker=threading.Thread(target=run,name='VisionBot',daemon=True)
         self.worker.start()
         self.logline('Автопилот запущен. При проблеме нажми ESC (окно можно восстановить с панели задач).')
