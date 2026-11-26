@@ -1,5 +1,5 @@
 import unittest
-from visionbot.presentation_rules import preview_layout, form_columns, session_state, short_text
+from visionbot.presentation_rules import preview_layout, form_columns, session_state, short_text, settled_preview_layout, stable_form_columns, PreviewLayout
 
 class PresentationRulesTests(unittest.TestCase):
     def test_preview_bounds(self):
@@ -15,6 +15,24 @@ class PresentationRulesTests(unittest.TestCase):
     def test_form_breakpoint(self):
         self.assertEqual(form_columns(389), 1)
         self.assertEqual(form_columns(390), 2)
+
+    def test_settled_preview_bounds_and_idempotence(self):
+        for width in range(2200):
+            plan = settled_preview_layout(width)
+            self.assertTrue(80 <= plan.size <= 440)
+            self.assertEqual(plan, settled_preview_layout(width, plan))
+
+    def test_preview_hysteresis(self):
+        for width in range(440,480):
+            self.assertTrue(settled_preview_layout(width,PreviewLayout(True,400)).stacked)
+            self.assertFalse(settled_preview_layout(width,PreviewLayout(False,280)).stacked)
+
+    def test_form_hysteresis(self):
+        for width in range(370,410):
+            self.assertEqual(stable_form_columns(width,1),1)
+            self.assertEqual(stable_form_columns(width,2),2)
+        self.assertEqual(stable_form_columns(410,1),2)
+        self.assertEqual(stable_form_columns(369,2),1)
 
     def test_session_state_priority(self):
         self.assertEqual(session_state(True, True, True, True, True, True, True), 'stopping')
