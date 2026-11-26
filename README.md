@@ -2,7 +2,7 @@
 
 # Chess AI 🧠
 
-[![Version](https://img.shields.io/badge/version-0.9.4-242424)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.9.5-242424)](VERSION)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows)](docs/README.md)
 [![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python)](requirements.txt)
 [![PyTorch](https://img.shields.io/badge/PyTorch-CUDA%20%7C%20CPU-EE4C2C?logo=pytorch)](requirements.txt)
@@ -14,7 +14,11 @@
 
 </div>
 
-## Vision Bot 0.9.4 — UI Foundation
+## Vision Bot 0.9.5 — UI Architecture & QML Preparation
+
+Независимый контроллер UI, модели состояния сессии и анализа, адаптер QObject для будущего Qt Quick. Действующий интерфейс CustomTkinter сохранён. Qt-зависимости опциональны. [Архитектура 0.9.5](docs/VISION_UI_ARCHITECTURE_095.md).
+
+### 0.9.4 — UI Foundation
 
 Тестовая версия редизайна: общая монохромная дизайн-система, адаптивные панели, компактный режим, журнал с поиском и экспортом. Вычислительное ядро и веса не изменены. Полная визуальная приёмка на Windows ещё не проведена. [Изменения и проверка](docs/VISION_UI_REENGINEERING.md).
 
