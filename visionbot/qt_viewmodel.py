@@ -9,12 +9,15 @@ from .ui_controller import VisionUiController
 class VisionViewModel(QObject):
     sessionChanged = Signal()
     analysisChanged = Signal()
+    journalChanged = Signal()
 
     def __init__(self, controller: VisionUiController, parent=None):
         super().__init__(parent)
         self.controller = controller
         self._session = controller.session
         self._analysis = controller.analysis
+        self._journal = []
+        self._visible = []
 
     @Property(str, notify=sessionChanged)
     def phase(self):
@@ -43,6 +46,38 @@ class VisionViewModel(QObject):
     @Property(str, notify=analysisChanged)
     def depth(self):
         return str(self._analysis.depth) if self._analysis.depth is not None else '—'
+
+    @Property(str, notify=sessionChanged)
+    def side(self):
+        return self._session.side if self._session.model and self._session.model != 'QA FIXTURE' else '—'
+
+    @Property(str, notify=analysisChanged)
+    def reply(self):
+        return self._analysis.reply or '—'
+
+    @Property(str, notify=analysisChanged)
+    def searchTime(self):
+        return f'{self._analysis.seconds:.3f} s' if self._analysis.seconds is not None else '—'
+
+    @Property('QVariantList', notify=journalChanged)
+    def journal(self):
+        return self._visible
+
+    @Property(int, notify=journalChanged)
+    def journalTotal(self):
+        return len(self._journal)
+
+    def set_journal(self, events):
+        self._journal = [{'category': e.category, 'text': e.text} for e in events][-600:]
+        self.filterJournal('', 'all')
+
+    @Slot(str, str)
+    def filterJournal(self, query, category):
+        q = query.casefold().strip()
+        self._visible = [row for row in self._journal
+                         if (category == 'all' or row['category'] == category)
+                         and (not q or q in row['text'].casefold())]
+        self.journalChanged.emit()
 
     @Slot()
     def refresh(self):
