@@ -24,7 +24,8 @@ from .design import (BG, PANEL, FIELD, BORDER, TEXT, MUTED, DIM, ACCENT,
                      BOARD_LIGHT, BOARD_DARK, STOP_BG, STOP_HOVER, STOP_BORDER, WARNING,
                      FONT, MONO, RADIUS, button_style)
 from .log_model import matches, select_entries
-from .presentation_rules import preview_layout, form_columns, session_state, short_text
+from .presentation_rules import preview_layout, form_columns, short_text
+from .ui_state import SessionSnapshot, AnalysisSnapshot
 
 GLYPHS=dict(zip('KQRBNPkqrbnp','♔♕♖♗♘♙♚♛♜♝♞♟'))
 
@@ -795,6 +796,7 @@ class Workspace:
             self.draw_board()
 
     def reset_analysis(self):
+        self.ui_controller.reset_analysis()
         self._last_event=None;self._fen='';self.fen_text.set('—');self.fen_short.set('—');self.fen_turn.set('—');self.notice.set('')
         self.move_text.set('—');self.eval_text.set('—');self.depth_text.set('—');self.detail_text.set('')
         self.draw_board();self.draw_candidates([])
@@ -804,11 +806,11 @@ class Workspace:
         self._last_event=event
         self.set_fen(event.get('fen',''))
         d=event['details']
-        self.move_text.set(str(event.get('move','—')))
-        cp=d.get('engine_cp');score=d.get('uci_score') or {}
-        self.eval_text.set(f'{cp:+d} cp' if isinstance(cp,int) else f'M{score["value"]}' if score.get('kind')=='mate' else '—')
-        self.depth_text.set(str(d.get('search_depth','—')))
-        self.detail_text.set(self.tr('Ответ: ','Reply: ')+str(d.get('expected_reply') or '—')+' · '+str(d.get('search_time_s','—'))+' s')
+        snapshot=AnalysisSnapshot.from_event(event)
+        self.move_text.set(snapshot.move or '—')
+        self.eval_text.set(snapshot.score)
+        self.depth_text.set(str(snapshot.depth) if snapshot.depth is not None else '—')
+        self.detail_text.set(self.tr('Ответ: ','Reply: ')+(snapshot.reply or '—')+' · '+(str(snapshot.seconds) if snapshot.seconds is not None else '—')+' s')
         self.draw_candidates(d.get('candidates') or [])
         self.analysis.configure(state='normal');self.analysis.delete('1.0','end')
         for title,body in report_sections(event,self.lang.get()=='EN'):
@@ -921,8 +923,12 @@ class Workspace:
         self.summary_text.set(self.checkpoint.get()+' · '+self.tr('Белые','White') if self.color.get()=='white' else self.checkpoint.get()+' · '+self.tr('Чёрные','Black'))
         if active and self.panel_overlaps() and not self.ev.is_set():
             self.ev.set();self.add_view_log('error',self.tr('Окно перекрывает доску. Запрошена остановка.','Window overlaps board. Stop requested.'))
-        state=session_state(active,self.ev.is_set(),self.worker is not None,bool(self.rect),
-                            self._engine_exists,self._model_exists,self.consent.get())
+        snapshot=SessionSnapshot(active=active,stopping=self.ev.is_set(),had_worker=self.worker is not None,
+                                 region=tuple(self.rect) if self.rect else None,
+                                 engine_available=self._engine_exists,model_available=self._model_exists,
+                                 consent=self.consent.get(),model=self.checkpoint.get(),side=self.color.get())
+        self.ui_controller.update_session(snapshot)
+        state=snapshot.phase
         names={'active':('Сессия активна','Session active'),'stopping':('Остановка…','Stopping…'),
                'stopped':('Остановлено','Stopped'),'ready':('Готов к работе','Ready'),
                'setup':('Настройка','Setup')}
