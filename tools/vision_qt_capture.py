@@ -19,7 +19,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     for width, height in ((1200,800),(800,650),(560,480)):
         window.resize(width,height)
-        for page, name in enumerate(('overview','analysis','journal','settings')):
+        for page, name in enumerate(('overview','analysis','journal','settings','gallery')):
             window.setProperty('page',page)
             QTest.qWait(300)
             image = window.grabWindow()
