@@ -111,8 +111,7 @@ class Workspace:
         self.log_collapsed=tk.BooleanVar(value=bool(settings.get('log_collapsed',False)))
         self.state_text=StableStringVar(value=self.tr('Ожидание','Idle'))
         self.latest_event_text=StableStringVar(value='—')
-        self.log_count=StableStringVar(value='0')
-        self.page_title=StableStringVar(value='')
+        self.log_count=StableStringVar(value='0 / 0')
         self.summary_text=StableStringVar(value='')
         self.board_text=StableStringVar(value='')
         self.fen_text=StableStringVar(value='—')
@@ -198,12 +197,12 @@ class Workspace:
         self.action_dock.grid_columnconfigure(0,weight=3)
         self.action_dock.grid_columnconfigure(1,weight=2)
         self.action_dock.grid_columnconfigure(2,weight=1)
-        self.start=self.button(self.action_dock,'▶ Запустить автопилот','▶ Start autopilot',self.launch,primary=True,width=90)
+        self.start=self.button(self.action_dock,'Запустить','Start',self.launch,primary=True,width=90)
         self.start.configure(height=36)
         self.start.grid(row=0,column=0,sticky='ew',padx=(8,4),pady=6)
-        self.attach=self.button(self.action_dock,'↪ Подключиться','↪ Join game',lambda:self.launch(attach_any_position=True),width=75)
+        self.attach=self.button(self.action_dock,'Подключиться','Join game',lambda:self.launch(attach_any_position=True),width=75)
         self.attach.grid(row=0,column=1,sticky='ew',padx=4,pady=6)
-        self.stop_button=self.button(self.action_dock,'■ Стоп','■ Stop',self.stop,width=58)
+        self.stop_button=self.button(self.action_dock,'Стоп','Stop',self.stop,width=58)
         self.stop_button.grid(row=0,column=2,sticky='ew',padx=(4,8),pady=6)
         self.stop_button.configure(fg_color=STOP_BG,hover_color=STOP_HOVER,border_color=STOP_BORDER,text_color=RED)
         self.build_session()
@@ -496,7 +495,7 @@ class Workspace:
         self.ctk.CTkSlider(row,from_=.55,to=1,number_of_steps=45,variable=self.opacity,
                           command=self.change_opacity,progress_color=TRACK,button_color=TEXT).pack(side='left',fill='x',expand=True)
         self.label(row,variable=self.alpha_text).pack(side='right',padx=8)
-        self.label(c,'Ctrl+Shift+M: компактный режим. Left Alt+1 / 2: запуск / подключение в разрешённом тесте','Ctrl+Shift+M: compact mode. Left Alt+1 / 2: start / join in a permitted test',color=MUTED,wrap=300).pack(anchor='w',padx=14,pady=(2,5))
+        self.label(c,'Ctrl+1–5: разделы. Ctrl+Shift+M: компактный режим. Left Alt+1 / 2: запуск / подключение в разрешённом тесте','Ctrl+1–5: pages. Ctrl+Shift+M: compact mode. Left Alt+1 / 2: start / join in a permitted test',color=MUTED,wrap=300).pack(anchor='w',padx=14,pady=(2,5))
         self.label(c,'55–100%. Оверлей остаётся видимым и не перекрывает доску.','55–100%. Overlay stays visible and must not cover the board.',color=MUTED,wrap=300).pack(anchor='w',padx=14,pady=(0,8))
         self.section(c,'+','Рабочее пространство оверлеев','Overlay workspace')
         for key,(ru,en,_) in NAMES.items():
@@ -548,7 +547,7 @@ class Workspace:
         actions=self.row(self.overlay)
         self.overlay_start=self.button(actions,'▶ Вкл. AI','▶ Start AI',self.launch,primary=True,width=75)
         self.overlay_start.pack(side='left',fill='x',expand=True,padx=2)
-        self.overlay_attach=self.button(actions,'↪ Присоед.','↪ Join',lambda:self.launch(attach_any_position=True),width=75)
+        self.overlay_attach=self.button(actions,'Войти','Join',lambda:self.launch(attach_any_position=True),width=75)
         self.overlay_attach.pack(side='left',fill='x',expand=True,padx=2)
         colors=self.row(self.overlay)
         self.label(colors,'Сторона','Side',size=11,color=MUTED).pack(side='left',padx=(2,6))
@@ -564,7 +563,6 @@ class Workspace:
         if self.page!=key:
             self._page_scroll[self.page]=self.viewport.canvas.yview()[0]
         self.page=key
-        self.page_title.set(self.tr(*self.nav_names[key]))
         for k,b in self.nav.items():
             b.configure(fg_color=ACTIVE if k==key else 'transparent',border_width=1 if k==key else 0,border_color=ACCENT if k==key else BORDER)
         self.layout()
@@ -593,7 +591,12 @@ class Workspace:
         # Compact navigation rail saves working space at side-by-side widths.
         for key_name,button in self.nav.items():
             ru,en=self.nav_names[key_name]
-            button.configure(text=self.tr(ru,en) if wide else '',width=126 if wide else 42,anchor='w' if wide else 'center')
+            short_names={'home':('Сессия','Session'),'vision':('Доска','Board'),
+                         'analysis':('Анализ','Analysis'),'log':('Журнал','Log'),'settings':('Опции','Settings')}
+            button.configure(text=self.tr(ru,en) if wide else self.tr(*short_names[key_name]),
+                             width=126 if wide else 61,height=36 if wide else 45,
+                             font=(FONT,13 if wide else 10),compound='left' if wide else 'top',
+                             anchor='w' if wide else 'center')
         if wide:
             self.system_card.pack(side='bottom',fill='x',padx=7,pady=8)
             self.model_hint.pack(side='right',padx=(4,3))
@@ -603,8 +606,8 @@ class Workspace:
         for i,child in enumerate(self.status_cells):
             child.grid(row=0 if wide else i//2,column=i if wide else i%2,pady=4)
         self.action_dock.grid(row=3,column=1,sticky='ew',padx=(0,10),pady=(2,5))
-        self.start.configure(text=self.tr('▶ Запустить автопилот','▶ Start autopilot') if wide else self.tr('▶ Запуск','▶ Start'))
-        self.attach.configure(text=self.tr('↪ Подключиться','↪ Join game') if wide else self.tr('↪ Присоед.','↪ Join'))
+        self.start.configure(text=self.tr('Запустить','Start') if wide else self.tr('Запуск','Start'))
+        self.attach.configure(text=self.tr('Подключиться','Join game') if wide else self.tr('Войти','Join'))
         if self.page=='log':
             self.viewport.grid_remove()
             self.full.grid_rowconfigure(2,weight=0);self.full.grid_rowconfigure(4,weight=1)
@@ -627,7 +630,7 @@ class Workspace:
         self.schedule_preview_layout()
         self.schedule_form_layout()
         destination=self._page_scroll.get(self.page,0) if previous_page!=self.page else previous_scroll
-        self.viewport.canvas.yview_moveto(destination)
+        self.viewport.restore_scroll(destination)
 
     def set_log_visibility(self, visible):
         self.log_toggle.configure(state='disabled' if self.page=='log' else 'normal',text='⌄' if visible else '⌃')
@@ -671,7 +674,6 @@ class Workspace:
             widget.configure(values=list(mapping))
             widget.set(next((k for k,v in mapping.items() if v==var.get()),str(var.get())))
         self.log_search.configure(placeholder_text=self.tr('Поиск по журналу','Search journal'))
-        self.page_title.set(self.tr(*self.nav_names[self.page]))
         self.draw_candidates((self._last_event or {}).get('details',{}).get('candidates',[]))
         self.fen_short.set(self.tr('Из телеметрии','Reported FEN') if self._fen else '—')
         if self._fen:self.set_fen(self._fen)
@@ -828,7 +830,9 @@ class Workspace:
         query=self._applied_query
         remove=bool(evicted and self._visible_entries and evicted is self._visible_entries[0])
         append=matches(line,self._filter,query)
-        if not (remove or append):return
+        if not (remove or append):
+            self.log_count.set(f'{len(self._visible_entries)} / {len(self._messages)}')
+            return
         follow=self.autoscroll.get() and self.log.yview()[1]>=.999
         self.log.configure(state='normal')
         if remove:
