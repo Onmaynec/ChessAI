@@ -5,6 +5,7 @@ from .workspace_preferences import WorkspacePreferences, MODES, PANELS
 
 class WorkspaceModel(QObject):
     errorChanged = Signal()
+    motionChanged = Signal()
 
     def __init__(self, path=None, parent=None):
         super().__init__(parent)
@@ -24,6 +25,16 @@ class WorkspaceModel(QObject):
         if error != self._error:
             self._error = error
             self.errorChanged.emit()
+
+    @Property(bool, notify=motionChanged)
+    def reducedMotion(self):
+        return self.preferences.data.get('reduced_motion', False)
+
+    @Slot(bool)
+    def setReducedMotion(self, value):
+        if value != self.reducedMotion and self.preferences.set_reduced_motion(value):
+            self.motionChanged.emit()
+            self._save()
 
     @Slot(result=str)
     def initialMode(self):
