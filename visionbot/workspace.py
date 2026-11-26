@@ -87,6 +87,7 @@ class Workspace:
         self._paused_messages=()
         self._log_search_job=None
         self._visible_entries=deque()
+        self._applied_query=''
         self.filter_var=StableStringVar(value='all')
         self._labels=[]
         self._locked=[]
@@ -99,7 +100,8 @@ class Workspace:
         self.lang=StableStringVar(value='EN' if settings.get('language')=='EN' else 'RU')
         self.opacity=tk.DoubleVar(value=clamp_alpha(settings.get('opacity',.85)))
         self.preview=tk.BooleanVar(value=bool(settings.get('preview',True)))
-        self.autoscroll=tk.BooleanVar(value=True)
+        self.autoscroll=tk.BooleanVar(value=bool(settings.get('follow_log',True)))
+        self.topmost.set(bool(settings.get('topmost',self.topmost.get())))
         self.log_collapsed=tk.BooleanVar(value=bool(settings.get('log_collapsed',False)))
         self.state_text=StableStringVar(value=self.tr('Ожидание','Idle'))
         self.summary_text=StableStringVar(value='')
@@ -126,7 +128,15 @@ class Workspace:
         r.configure(fg_color=BG)
         scale=self.window_scale()
         sw,sh=round(r.winfo_screenwidth()/scale),round(r.winfo_screenheight()/scale)
-        r.geometry(f'{min(1360,max(420,sw-70))}x{min(850,max(440,sh-90))}')
+        width,height=min(1360,max(420,sw-70)),min(850,max(440,sh-90))
+        saved=re.fullmatch(r'(\d+)x(\d+)([+-]\d+)([+-]\d+)',str(settings.get('geometry','')))
+        if saved:
+            w,h,x,y=map(int,saved.groups())
+            width=max(420,min(w,sw-30));height=max(440,min(h,sh-60))
+            x=max(0,min(x,r.winfo_screenwidth()-round(width*scale)-16))
+            y=max(0,min(y,r.winfo_screenheight()-round(height*scale)-42))
+            r.geometry(f'{width}x{height}+{x}+{y}')
+        else:r.geometry(f'{width}x{height}')
         r.minsize(420,440)
         r.attributes('-topmost',bool(self.topmost.get()))
         self.full=ctk.CTkFrame(r,fg_color=BG,corner_radius=0)
@@ -241,8 +251,8 @@ class Workspace:
             if change:change()
         opts=options()
         widget=self.ctk.CTkOptionMenu(parent,values=list(opts),command=picked,height=32,width=104,
-                 dynamic_resizing=False,corner_radius=7,fg_color=FIELD,button_color=BORDER,button_hover_color=ACTIVE,
-                 dropdown_fg_color=PANEL,dropdown_hover_color=ACTIVE,text_color=TEXT,font=(FONT,13))
+                 dynamic_resizing=False,corner_radius=RADIUS,fg_color=FIELD,button_color=BORDER,button_hover_color=ACTIVE,
+                 dropdown_fg_color=PANEL,dropdown_hover_color=ACTIVE,dropdown_text_color=TEXT,text_color=TEXT,font=(FONT,13))
         widget.pack(fill='x',padx=3,pady=(0,2))
         widget.set(next((k for k,v in opts.items() if v==var.get()),str(var.get())))
         self._choices.append((widget,var,values))
@@ -267,7 +277,7 @@ class Workspace:
         picker.pack(side='left',fill='x',expand=True)
         from .external_session import available
         self.agent_picker=self.choice(picker,'','',self.checkpoint,[(n,n,n) for n in (*ALIASES,*available())],change=self.on_agent_change)
-        self.model_hint=self.ctk.CTkFrame(row,fg_color=FIELD,corner_radius=7)
+        self.model_hint=self.ctk.CTkFrame(row,fg_color=FIELD,corner_radius=RADIUS)
         self.label(self.model_hint,'Выбранная модель','Selected model',size=10,color=MUTED).pack(anchor='w',padx=8,pady=(2,0))
         self.model_hint_text=StableStringVar(value='')
         self.label(self.model_hint,variable=self.model_hint_text,size=11).pack(anchor='w',padx=8,pady=(0,2))
@@ -304,7 +314,7 @@ class Workspace:
             ('Восстановление','Recover game',self.resume,None,True),
             ('Self-play (+500)','Self-play (+500)',self.train,None,True),
             ('Поверх окон','Always on top',self.topmost,self.set_topmost,False)]):
-            cell=self.ctk.CTkFrame(toggles,fg_color=FIELD,corner_radius=7)
+            cell=self.ctk.CTkFrame(toggles,fg_color=FIELD,corner_radius=RADIUS)
             cell.grid(row=i//2,column=i%2,sticky='ew',padx=3,pady=3)
             toggle=self.ctk.CTkSwitch(cell,text='',variable=var,command=command,progress_color=TRACK,
                                       fg_color=BORDER,button_color=TEXT,width=36,switch_width=34,switch_height=18)
@@ -356,11 +366,11 @@ class Workspace:
         stats=self.row(c)
         for i,(ru,en,v) in enumerate([('Ход','Move',self.move_text),('Оценка · cp','Score · cp',self.eval_text),('Глубина','Depth',self.depth_text)]):
             stats.grid_columnconfigure(i,weight=1,uniform='metrics')
-            metric=self.ctk.CTkFrame(stats,fg_color=FIELD,corner_radius=7)
+            metric=self.ctk.CTkFrame(stats,fg_color=FIELD,corner_radius=RADIUS)
             metric.grid(row=0,column=i,sticky='ew',padx=3)
             self.label(metric,ru,en,color=MUTED,size=10).pack(anchor='w',padx=7,pady=(3,0))
             self.label(metric,variable=v,size=17,bold=True).pack(anchor='w',padx=7,pady=(0,4))
-        self.candidates=self.ctk.CTkFrame(c,fg_color=FIELD,corner_radius=7)
+        self.candidates=self.ctk.CTkFrame(c,fg_color=FIELD,corner_radius=RADIUS)
         self.candidates.pack(fill='x',padx=14,pady=(3,7))
         self.detail_label=self.label(c,variable=self.detail_text,color=MUTED,wrap=280,size=11)
         self.detail_label.pack(anchor='w',padx=14,pady=(0,5))
@@ -385,7 +395,7 @@ class Workspace:
             if value in mapping:
                 self.filter_var.set(mapping[value]);self.filter_log(mapping[value])
         self.filter_choice=self.ctk.CTkSegmentedButton(filters,values=[self.tr(a,b) for _,a,b in self.filter_values],
-                command=select,height=27,corner_radius=12,fg_color=FIELD,selected_color=ACTIVE,
+                command=select,height=27,corner_radius=RADIUS,fg_color=FIELD,selected_color=ACTIVE,
                 selected_hover_color=TRACK,unselected_color=FIELD,unselected_hover_color=BORDER,
                 font=(FONT,11))
         self.filter_choice.pack(side='left',fill='x',expand=True)
@@ -395,6 +405,7 @@ class Workspace:
         self.log_search=self.ctk.CTkEntry(self.log_tools,textvariable=self.log_query,
             fg_color=FIELD,border_color=BORDER,text_color=TEXT,height=30,corner_radius=RADIUS,
             font=(FONT,12))
+        self.label(self.log_tools,'Поиск','Search',size=11,color=MUTED).pack(side='left',padx=(0,5))
         self.log_search.pack(side='left',fill='x',expand=True,padx=(0,4))
         self.button(self.log_tools,'Копировать','Copy',self.copy_log,width=76).pack(side='left',padx=2)
         self.button(self.log_tools,'Экспорт','Export',self.export_log,width=65).pack(side='left',padx=2)
@@ -403,7 +414,7 @@ class Workspace:
         self.switch(self.log_options,'Следить','Follow',self.autoscroll,self.follow_log)
         for child in self.log_options.winfo_children():
             child.pack_configure(side='left',padx=(0,10),pady=2)
-        self.log=self.ctk.CTkTextbox(c,height=76,fg_color=FIELD,text_color=TEXT,font=(MONO,11),wrap='word',state='disabled',corner_radius=7)
+        self.log=self.ctk.CTkTextbox(c,height=76,fg_color=FIELD,text_color=TEXT,font=(MONO,11),wrap='word',state='disabled',corner_radius=RADIUS)
         self.log.pack(fill='both',expand=True,padx=12,pady=(1,7))
         for tag,color in [('error',RED),('move',GREEN),('analysis',MUTED),('info',TEXT)]:
             self.log.tag_config(tag,foreground=color)
@@ -460,7 +471,7 @@ class Workspace:
         row=self.row(card)
         for i,(ru,en,var) in enumerate([('Выбранный ход','Chosen move',self.move_text),('Оценка · cp','Evaluation · cp',self.eval_text)]):
             row.grid_columnconfigure(i,weight=1,uniform='overlay')
-            metric=ctk.CTkFrame(row,fg_color=FIELD,corner_radius=7)
+            metric=ctk.CTkFrame(row,fg_color=FIELD,corner_radius=RADIUS)
             metric.grid(row=0,column=i,sticky='ew',padx=3)
             self.label(metric,ru,en,color=MUTED,size=10).pack(anchor='w',padx=8,pady=(3,0))
             self.label(metric,variable=var,bold=True,size=21).pack(anchor='w',padx=8,pady=(0,4))
@@ -556,6 +567,8 @@ class Workspace:
     def set_log_visibility(self, visible):
         self.log_toggle.configure(state='disabled' if self.page=='log' else 'normal',text='⌄' if visible else '⌃')
         if visible:
+            self.log.pack_forget();self.log_filters.pack_forget()
+            self.log_tools.pack_forget();self.log_options.pack_forget()
             self.log_filters.pack(fill='x',padx=12,pady=3)
             if self.page=='log':
                 self.log_tools.pack(fill='x',padx=12,pady=(2,0))
@@ -610,7 +623,9 @@ class Workspace:
         try:
             self._workspace_path.parent.mkdir(parents=True,exist_ok=True)
             tmp=self._workspace_path.with_suffix('.tmp')
-            tmp.write_text(json.dumps({'language':self.lang.get(),'opacity':clamp_alpha(self.opacity.get()),'preview':self.preview.get(),'log_collapsed':self.log_collapsed.get()},indent=2),encoding='utf-8')
+            tmp.write_text(json.dumps({'language':self.lang.get(),'opacity':clamp_alpha(self.opacity.get()),'preview':self.preview.get(),'log_collapsed':self.log_collapsed.get(),
+                                       'follow_log':self.autoscroll.get(),'topmost':self.topmost.get(),
+                                       'geometry':(self._full_geometry or '') if self.compact else self.root.geometry()},indent=2),encoding='utf-8')
             tmp.replace(self._workspace_path)
         except OSError as exc:self.add_view_log('error',str(exc))
 
@@ -741,7 +756,7 @@ class Workspace:
         evicted=self._messages[0] if len(self._messages)==self._messages.maxlen else None
         self._messages.append(line)
         if self.log_paused.get():return
-        query=self.log_query.get()
+        query=self._applied_query
         remove=bool(evicted and self._visible_entries and evicted==self._visible_entries[0])
         append=matches(line,self._filter,query)
         if not (remove or append):return
@@ -767,7 +782,8 @@ class Workspace:
     def filter_log(self,value):
         self._filter=value
         entries=self._paused_messages if self.log_paused.get() else self._messages
-        self._visible_entries=deque(select_entries(entries,value,self.log_query.get()))
+        self._applied_query=self.log_query.get()
+        self._visible_entries=deque(select_entries(entries,value,self._applied_query))
         self.log.configure(state='normal');self.log.delete('1.0','end')
         for tag,line in self._visible_entries:self.log.insert('end',line,tag)
         self.log.configure(state='disabled')
