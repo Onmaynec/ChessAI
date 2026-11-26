@@ -6,6 +6,7 @@ from .workspace_preferences import WorkspacePreferences, MODES, PANELS
 class WorkspaceModel(QObject):
     errorChanged = Signal()
     motionChanged = Signal()
+    textScaleChanged = Signal()
 
     def __init__(self, path=None, parent=None):
         super().__init__(parent)
@@ -34,6 +35,16 @@ class WorkspaceModel(QObject):
     def setReducedMotion(self, value):
         if value != self.reducedMotion and self.preferences.set_reduced_motion(value):
             self.motionChanged.emit()
+            self._save()
+
+    @Property(int, notify=textScaleChanged)
+    def textScale(self):
+        return self.preferences.data.get('text_scale',100)
+
+    @Slot(int)
+    def setTextScale(self,value):
+        if value != self.textScale and self.preferences.set_text_scale(value):
+            self.textScaleChanged.emit()
             self._save()
 
     @Slot(result=str)
