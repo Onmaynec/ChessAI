@@ -25,7 +25,7 @@ ApplicationWindow {
             workspaceModel.record(panelKey, x, y, width, height)
     }
     function openPanel() {
-        if (visible) { raise(); requestActivate(); return }
+        if (visible) { if (visibility === Window.Minimized) showNormal(); raise(); requestActivate(); return }
         var g = workspaceModel.geometry(panelKey)
         if (g.length === 4) {
             x = g[0]; y = g[1]; width = g[2]; height = g[3]
@@ -67,7 +67,16 @@ ApplicationWindow {
         active: win.visible
         sourceComponent: win.panelKey === "metrics" ? metrics : win.panelKey === "board" ? board : win.panelKey === "analysis" ? analysis : journal
     }
-    Component { id: metrics; Item { CompactPanel { anchors.fill: parent } } }
+    Component {
+        id: metrics
+        ScrollView {
+            id: metricsScroll
+            clip: true
+            contentWidth: availableWidth
+            contentHeight: metricsContent.implicitHeight
+            CompactPanel { id: metricsContent; width: Math.max(1,metricsScroll.availableWidth) }
+        }
+    }
     Component {
         id: board
         ScrollView {
