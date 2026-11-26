@@ -22,7 +22,7 @@ ApplicationWindow {
     property bool initialized: false
     readonly property bool wide: width >= 1000
     readonly property bool compactMode: mode === "compact"
-    readonly property var pages: ["Обзор", "Анализ", "Журнал", "Настройки"]
+    readonly property var pages: ["Обзор", "Анализ", "Журнал", "Настройки", "Компоненты"]
 
 
     function remember() {
@@ -85,6 +85,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+2"; enabled: !root.compactMode; onActivated: root.page = 1 }
     Shortcut { sequence: "Ctrl+3"; enabled: !root.compactMode; onActivated: root.page = 2 }
     Shortcut { sequence: "Ctrl+4"; enabled: !root.compactMode; onActivated: root.page = 3 }
+    Shortcut { sequence: "Ctrl+5"; enabled: !root.compactMode; onActivated: root.page = 4 }
 
     header: Rectangle {
         color: theme.bg
@@ -172,6 +173,19 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: root.page
+            onCurrentIndexChanged: {
+                pageFade.stop()
+                opacity = 1
+                if (root.initialized && !workspaceModel.reducedMotion && !root.compactMode) {
+                    opacity = 0.72
+                    pageFade.start()
+                }
+            }
+            NumberAnimation { id: pageFade; target: workspace; property: "opacity"; to: 1; duration: theme.motion.page; easing.type: Easing.OutCubic }
+            Connections {
+                target: workspaceModel
+                function onMotionChanged() { if (workspaceModel.reducedMotion) { pageFade.stop(); workspace.opacity = 1 } }
+            }
 
             ScrollView {
                 id: overview
@@ -194,7 +208,7 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Label { text: "Состояние"; color: theme.muted; Layout.fillWidth: true }
-                                Label { text: visionModel.active ? "Активна" : "Нет активной сессии"; color: visionModel.active ? theme.green : theme.muted }
+                                StatusLabel { label: visionModel.active ? "Активна" : "Нет активной сессии"; tone: visionModel.active ? "success" : "neutral" }
                             }
                             Rectangle { height: 1; color: theme.border; Layout.fillWidth: true }
                             Label { text: "Источник: " + sourceLabel; color: theme.text; Layout.fillWidth: true; wrapMode: Text.Wrap }
@@ -292,8 +306,9 @@ ApplicationWindow {
                             spacing: 12
                             Label { text: "Оформление"; color: theme.text; font.pixelSize: 17; font.weight: Font.DemiBold }
                             Label { text: "Monochrome · #000000"; color: theme.muted }
-                            CheckBox { id: top; text: "Поверх окон (только preview)"; checked: root.pinned; palette.windowText: theme.text; onToggled: { root.pinned = checked; workspaceModel.setPinned("main",checked) } }
-                            Label { text: "Ctrl+1–4 — разделы · Ctrl+Shift+M — компактный режим"; color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                            UiToggle { id: top; text: "Поверх окон (только preview)"; checked: root.pinned; Layout.fillWidth: true; onToggled: { root.pinned = checked; workspaceModel.setPinned("main",checked) } }
+                            UiToggle { objectName: "settingsMotionToggle"; text: "Уменьшить анимации"; checked: workspaceModel.reducedMotion; Layout.fillWidth: true; onToggled: workspaceModel.setReducedMotion(checked) }
+                            Label { text: "Ctrl+1–5 — разделы · Ctrl+Shift+M — компактный режим"; color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
                             Label { text: workspaceModel.error; visible: text.length > 0; textFormat: Text.PlainText; color: theme.red; Layout.fillWidth: true; wrapMode: Text.Wrap }
                         }
                     }
@@ -323,6 +338,7 @@ ApplicationWindow {
                     }
                 }
             }
+            ComponentGallery {}
         }
     }
     ScrollView {
