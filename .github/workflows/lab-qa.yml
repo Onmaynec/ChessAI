@@ -1,0 +1,43 @@
+name: Chess AI Lab QA
+on:
+  push:
+    branches: ['main', 'design/chess-ai-lab-renaissance']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  lab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install 'fastapi>=0.110,<1' 'uvicorn>=0.29,<1' httpx
+      - run: python -m unittest discover -s tests -p test_lab_reliability.py
+      - run: python -m unittest discover -s tests -p test_model_catalog.py
+      - run: |
+          node tests/test_lab_analytics.js
+          node tests/test_lab_ux.js
+          node tests/test_lab_reliability.js
+          node --check dashboard/ui/app.js
+      - run: npm install --no-save @playwright/test@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - run: |
+          python -m uvicorn dashboard.server:app --host 127.0.0.1 --port 8765 > lab-server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8765/ > /dev/null; then break; fi
+            sleep 1
+          done
+          npx playwright test tests/lab_ui.spec.js --workers=1 --reporter=line --timeout=60000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lab-qa
+          path: |
+            test-results/
+            lab-server.log

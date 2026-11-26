@@ -34,7 +34,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
 UI = Path(__file__).resolve().parent / "ui"
 RUN_ID = re.compile(r"^[a-zA-Z0-9_-]{1,70}$")
-proc_lock = threading.Lock()
+proc_lock = threading.RLock()
+training_mutation_lock = threading.Lock()
 active_proc: subprocess.Popen | None = None
 active_run: str | None = None
 active_log = None
@@ -222,7 +223,6 @@ def launch(run_id: str, cfg: dict, resume: bool = False):
     if not engine.is_file():
         raise HTTPException(409, "Chess engine not compiled. Run scripts/build_windows.bat first")
     path = RUNS / run_id
-    path.mkdir(parents=True,exist_ok=True)
     cmd = [sys.executable, "-m", "neural.selfplay", "--engine", str(engine.resolve()),
            "--out", str(path.resolve())]
     fields = {"iterations":"iterations", "games_per_iteration":"games-per-iteration",
@@ -242,13 +242,21 @@ def launch(run_id: str, cfg: dict, resume: bool = False):
             cmd.extend(["--" + flag, str(cfg[key])])
     if resume:
         cmd.append("--resume")
-        (path / "stop_requested").unlink(missing_ok=True)
-    with proc_lock:
-        # Creating a new run is atomic from the dashboard's perspective.
-        active_log = (path / "console.log").open("a", encoding="utf-8")
-        active_proc = subprocess.Popen(cmd, cwd=ROOT, stdout=active_log,
-                                       stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
-        active_run = run_id
+    with training_mutation_lock, proc_lock:
+        status = process_status()
+        if status['active']:
+            raise HTTPException(409, f"Training already running: {status['run']}")
+        path.mkdir(parents=True,exist_ok=True)
+        if resume:
+            (path / 'stop_requested').unlink(missing_ok=True)
+        log = (path / 'console.log').open('a', encoding='utf-8')
+        try:
+            proc = subprocess.Popen(cmd, cwd=ROOT, stdout=log,
+                                    stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        except BaseException:
+            log.close()
+            raise
+        active_log, active_proc, active_run = log, proc, run_id
     return {"ok":True, "run":run_id}
 
 
@@ -445,17 +453,18 @@ def storage_status(run_id: str):
 def compact_storage(run_id: str):
     # Only when all training processes are stopped. Strictly preserve the
     # checkpoint iteration boundary, even after interrupted process failures.
-    path=safe_run(run_id)
-    if process_status()['active']:
-        raise HTTPException(409,'Stop training before compacting')
-    state=json_file(path/'run_state.json',{}) or {}
-    if state.get('status')=='running':
-        raise HTTPException(409,'Run marked running. Verify trainer stopped; use offline tool after recovery.')
-    from neural.storage import compact_run
-    import torch
-    checkpoint=torch.load(path/'checkpoints/latest.pt',map_location='cpu',weights_only=True)
-    result=compact_run(path,committed=int(checkpoint['iteration']))
-    return {'result':result,'space':space_report(path)}
+    with training_mutation_lock:
+        path=safe_run(run_id)
+        if process_status()['active']:
+            raise HTTPException(409,'Stop training before compacting')
+        state=json_file(path/'run_state.json',{}) or {}
+        if state.get('status')=='running':
+            raise HTTPException(409,'Run marked running. Verify trainer stopped; use offline tool after recovery.')
+        from neural.storage import compact_run
+        import torch
+        checkpoint=torch.load(path/'checkpoints/latest.pt',map_location='cpu',weights_only=True)
+        result=compact_run(path,committed=int(checkpoint['iteration']))
+        return {'result':result,'space':space_report(path)}
 
 
 @app.post("/api/start")
@@ -471,13 +480,16 @@ def start(config:TrainingConfig):
 
 
 @app.post("/api/stop")
-def stop():
-    status = process_status()
-    if not status["active"] or not status["run"]:
-        raise HTTPException(409, "No running training to stop")
-    path = safe_run(status["run"])
-    (path / "stop_requested").write_text("Finish the current iteration, then stop.\n",encoding="utf-8")
-    return {"ok":True, "message":"Stop requested: finish current iteration before exiting"}
+def stop(run: str | None = None):
+    with proc_lock:
+        status = process_status()
+        if not status["active"] or not status["run"]:
+            raise HTTPException(409, "No running training to stop")
+        if run is not None and run != status["run"]:
+            raise HTTPException(409, "Active experiment changed; refresh before stopping")
+        path = safe_run(status["run"])
+        (path / "stop_requested").write_text("Finish the current iteration, then stop.\n",encoding="utf-8")
+        return {"ok":True, "message":"Stop requested: finish current iteration before exiting"}
 
 
 @app.post("/api/resume/{run_id}")
@@ -501,10 +513,13 @@ def resume(run_id:str, config:ResumeConfig):
 
 
 @app.get('/api/analysis')
-def analysis(run: str):
+def analysis(run: str, series_limit: int | None = Query(None, ge=1, le=100000)):
     path=safe_run(run)
     metrics=tail_jsonl(path/'metrics.jsonl',100000)
     result=summarize(metrics)
+    result['series_total']=len(result['series'])
+    if isinstance(series_limit, int):
+        result['series']=result['series'][-series_limit:]
     last=path/'checkpoints'/'latest.pt'
     result['checkpoint']={'exists':last.is_file(),
         'size_bytes':last.stat().st_size if last.is_file() else None,
@@ -527,6 +542,7 @@ def analysis(run: str):
                                  'statistics':stats,
                                 'interval':data.get('score_interval95_hoeffding'),
                                 'seed':data.get('seed'),'opening_plies':data.get('opening_plies'),
+                                'max_plies':data.get('max_plies'),'games_requested':data.get('games_requested'),
                                 'suite':data.get('suite','legacy'),
                                 'candidate':Path(data.get('candidate','')).name,
                                 'reference':Path(data.get('reference','')).name})
