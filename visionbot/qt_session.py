@@ -11,7 +11,7 @@ import threading
 from collections import deque
 from pathlib import Path
 from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QWindow
 from .run_catalog import checkpoint_path, engine_path
 from .ui_state import SessionSnapshot
 from .telemetry import rectangles_overlap, rotate_and_append
@@ -24,6 +24,11 @@ def native_window_rect(window):
     api = ctypes.WinDLL('user32',use_last_error=True)
     api.GetWindowRect.argtypes = [wintypes.HWND,ctypes.POINTER(wintypes.RECT)]
     api.GetWindowRect.restype = wintypes.BOOL
+    api.GetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+    api.GetAwarenessFromDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+    api.GetAwarenessFromDpiAwarenessContext.restype = ctypes.c_int
+    if api.GetAwarenessFromDpiAwarenessContext(api.GetThreadDpiAwarenessContext()) != 2:
+        raise RuntimeError('Per-monitor DPI awareness is required for safe capture')
     rect = wintypes.RECT()
     if not api.GetWindowRect(int(window.winId()),ctypes.byref(rect)):
         raise OSError('Cannot read native window bounds')
@@ -153,7 +158,7 @@ class QtSession(QObject):
         x,y,s=self._rect
         board=(left+x,top+y,s,s)
         for window in QGuiApplication.topLevelWindows():
-            if window.isVisible() and not window.isMinimized():
+            if window.isVisible() and window.visibility() != QWindow.Visibility.Minimized:
                 if rectangles_overlap(native_window_rect(window),board):
                     return False
         return True
@@ -216,7 +221,7 @@ class QtSession(QObject):
 
     @Slot()
     def stop(self):
-        if self.active:
+        if self.active and not self._stop.is_set():
             self._stop.set()
             self._notice('Остановка…')
 
