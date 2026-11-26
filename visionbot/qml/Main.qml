@@ -15,7 +15,7 @@ ApplicationWindow {
     title: "Vision Bot · " + appVersion + " · Preview"
     color: theme.bg
     font.family: theme.font
-    font.pixelSize: 13
+    font.pixelSize: Math.round(13 * workspaceModel.textScale / 100)
     property int page: 0
     property string mode: "standard"
     property bool pinned: false
@@ -95,8 +95,8 @@ ApplicationWindow {
             anchors.leftMargin: 20
             anchors.rightMargin: 20
             spacing: 12
-            Label { text: "VISION BOT"; font.weight: Font.Bold; font.pixelSize: 18; color: theme.text }
-            Label { text: appVersion; visible: !root.compactMode; color: theme.muted; font.pixelSize: 12 }
+            Label { text: "VISION BOT"; font.weight: Font.Bold; font.pixelSize: Math.round(18 * workspaceModel.textScale / 100); color: theme.text }
+            Label { text: appVersion; visible: !root.compactMode; color: theme.muted; font.pixelSize: Math.round(12 * workspaceModel.textScale / 100) }
             Item { Layout.fillWidth: true }
             ComboBox {
                 id: modePicker
@@ -117,7 +117,7 @@ ApplicationWindow {
                 visible: !root.compactMode
                 text: sourceLabel
                 color: theme.warning
-                font.pixelSize: 11
+                font.pixelSize: Math.round(11 * workspaceModel.textScale / 100)
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
                 Layout.maximumWidth: 180
@@ -132,8 +132,8 @@ ApplicationWindow {
             anchors.fill: parent
             anchors.leftMargin: 16
             anchors.rightMargin: 16
-            Label { text: "Только просмотр · без управления партией"; color: theme.muted; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight }
-            Label { text: "Qt Quick"; color: theme.dim; font.pixelSize: 11 }
+            Label { text: "Только просмотр · без управления партией"; color: theme.muted; font.pixelSize: Math.round(11 * workspaceModel.textScale / 100); Layout.fillWidth: true; elide: Text.ElideRight }
+            Label { text: "Qt Quick"; color: theme.dim; font.pixelSize: Math.round(11 * workspaceModel.textScale / 100) }
         }
         Rectangle { width: parent.width; height: 1; color: theme.border }
     }
@@ -145,12 +145,12 @@ ApplicationWindow {
         Rectangle {
             color: theme.panel
             Layout.fillHeight: true
-            Layout.preferredWidth: root.wide ? 208 : 116
+            Layout.preferredWidth: root.wide ? 208 : Math.round(116 * workspaceModel.textScale / 100)
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
                 spacing: 6
-                Label { text: "РАБОЧАЯ СРЕДА"; color: theme.dim; font.pixelSize: 10; Layout.fillWidth: true; elide: Text.ElideRight; Layout.topMargin: 8; Layout.bottomMargin: 8 }
+                Label { text: "РАБОЧАЯ СРЕДА"; color: theme.dim; font.pixelSize: Math.round(10 * workspaceModel.textScale / 100); Layout.fillWidth: true; elide: Text.ElideRight; Layout.topMargin: 8; Layout.bottomMargin: 8 }
                 Repeater {
                     model: root.pages
                     delegate: UiButton {
@@ -163,7 +163,7 @@ ApplicationWindow {
                     }
                 }
                 Item { Layout.fillHeight: true }
-                Label { text: "LOCAL / READ ONLY"; color: theme.dim; font.pixelSize: 10; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                Label { text: "LOCAL / READ ONLY"; color: theme.dim; font.pixelSize: Math.round(10 * workspaceModel.textScale / 100); Layout.fillWidth: true; wrapMode: Text.Wrap }
             }
             Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: theme.border }
         }
@@ -268,7 +268,7 @@ ApplicationWindow {
                     Surface {
                         Layout.fillWidth: true
                         contentItem: ColumnLayout {
-                            Label { text: "FEN выбранной записи"; color: theme.text; font.pixelSize: 16 }
+                            Label { text: "FEN выбранной записи"; color: theme.text; font.pixelSize: Math.round(16 * workspaceModel.textScale / 100) }
                             TextArea {
                                 text: visionModel.boardView.fen || "Нет данных"
                                 readOnly: true
@@ -304,9 +304,23 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         contentItem: ColumnLayout {
                             spacing: 12
-                            Label { text: "Оформление"; color: theme.text; font.pixelSize: 17; font.weight: Font.DemiBold }
+                            Label { text: "Оформление"; color: theme.text; font.pixelSize: Math.round(17 * workspaceModel.textScale / 100); font.weight: Font.DemiBold }
                             Label { text: "Monochrome · #000000"; color: theme.muted }
                             UiToggle { id: top; text: "Поверх окон (только preview)"; checked: root.pinned; Layout.fillWidth: true; onToggled: { root.pinned = checked; workspaceModel.setPinned("main",checked) } }
+                            Label { text: "Размер текста"; color: theme.muted; Layout.fillWidth: true }
+                            ComboBox {
+                                objectName: "textScalePicker"
+                                model: ["100%", "115%", "130%"]
+                                property var scales: [100,115,130]
+                                currentIndex: scales.indexOf(workspaceModel.textScale)
+                                onActivated: workspaceModel.setTextScale(scales[currentIndex])
+                                Layout.fillWidth: true
+                                Accessible.name: "Размер текста"
+                                palette.button: theme.field
+                                palette.buttonText: theme.text
+                                palette.base: theme.panel
+                                palette.text: theme.text
+                            }
                             UiToggle { objectName: "settingsMotionToggle"; text: "Уменьшить анимации"; checked: workspaceModel.reducedMotion; Layout.fillWidth: true; onToggled: workspaceModel.setReducedMotion(checked) }
                             Label { text: "Ctrl+1–5 — разделы · Ctrl+Shift+M — компактный режим"; color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
                             Label { text: workspaceModel.error; visible: text.length > 0; textFormat: Text.PlainText; color: theme.red; Layout.fillWidth: true; wrapMode: Text.Wrap }
@@ -316,7 +330,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         contentItem: ColumnLayout {
                             spacing: 8
-                            Label { text: "Независимые панели"; color: theme.text; font.pixelSize: 17 }
+                            Label { text: "Независимые панели"; color: theme.text; font.pixelSize: Math.round(17 * workspaceModel.textScale / 100) }
                             Repeater {
                                 model: [{key:"metrics",name:"Метрики"},{key:"board",name:"Доска"},{key:"analysis",name:"Варианты"},{key:"journal",name:"Журнал"}]
                                 delegate: UiButton {
@@ -332,13 +346,16 @@ ApplicationWindow {
                     Surface {
                         Layout.fillWidth: true
                         contentItem: ColumnLayout {
-                            Label { text: "Режим работы"; color: theme.text; font.pixelSize: 17 }
+                            Label { text: "Режим работы"; color: theme.text; font.pixelSize: Math.round(17 * workspaceModel.textScale / 100) }
                             Label { text: "Запуск сессии, калибровка и управление доступны в прежнем интерфейсе. Здесь нет активных команд."; color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
                         }
                     }
                 }
             }
-            ComponentGallery {}
+            Loader {
+                active: root.page === 4
+                sourceComponent: Component { ComponentGallery {} }
+            }
         }
     }
     ScrollView {
