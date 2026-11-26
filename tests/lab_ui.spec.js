@@ -67,3 +67,27 @@ test('chart range and raw CSV, report detail',async({page})=>{
  const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#chart-download').click()]);expect(download.suggestedFilename()).toContain('window.csv');
  await page.locator('[data-screen=evaluation]').click();await expect(page.locator('#evaluation-detail .eval-score strong')).toHaveText('60%');await expect(page.locator('#evaluation-detail')).toContainText('best.pt');
 });
+
+test('configuration draft survives closing and reloading, default KL is valid',async({page})=>{
+ await page.goto(root);await expect(page.locator('#open-config')).toBeEnabled();await page.locator('#open-config').click();
+ await page.locator('#c-iterations').fill('123');await page.keyboard.press('Escape');
+ await page.reload();await expect(page.locator('#open-config')).toBeEnabled();await page.locator('#open-config').click();
+ await expect(page.locator('#c-iterations')).toHaveValue('123');
+ expect(await page.locator('#c-kl').evaluate(el=>el.checkValidity())).toBeTruthy();
+ await page.locator('#draft-reset').click();await expect(page.locator('#c-iterations')).toHaveValue('10');
+});
+test('command palette supports keyboard selection and native Escape',async({page})=>{
+ await page.goto(root);await page.keyboard.press('Control+k');await page.locator('#command-search').fill('модели');await page.keyboard.press('Enter');await expect(page.locator('#screen-models')).toBeVisible();
+ await page.keyboard.press('Control+k');await page.keyboard.press('Escape');await expect(page.locator('#command-dialog')).not.toBeVisible();
+});
+test('replay uses saved FEN, rotates coordinates and plays without backend writes',async({page})=>{
+ const fen='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+ const after='rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+ await page.route('**/api/overview*',r=>r.fulfill({json:{runs:[{id:'r1',name:'r1'}],selected:'r1',process:{active:false},state:{},metrics:[],games:[{game_id:1,iteration:1,result:'*',plies:1}],log:[],file_warnings:[]}}));
+ await page.route('**/api/game/1?*',r=>r.fulfill({json:{game_id:1,iteration:1,result:'*',plies:1,moves:['e2e4'],fens:[fen,after]}}));
+ await page.goto(root);await page.locator('#recent-games .view-game').click();
+ await expect(page.locator('#replay-board .square').first()).toHaveAttribute('title','a8');
+ await page.locator('#replay-flip').click();await expect(page.locator('#replay-board .square').first()).toHaveAttribute('title','h1');
+ await page.locator('#replay-play').click();await expect(page.locator('#replay-step')).toHaveText('1 / 1');
+ await expect(page.locator('#replay-board .last')).toHaveCount(2);await page.keyboard.press('Escape');await expect(page.locator('#game-overlay')).not.toBeVisible();
+});

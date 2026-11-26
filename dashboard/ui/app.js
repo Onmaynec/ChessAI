@@ -11,10 +11,15 @@ const application = {selected:null, screen:'overview', metric:'value', overview:
 const api = async (url, opts) => {const res=await fetch(url,{cache:'no-store',...opts});let data={};try{data=await res.json()}catch(_){throw Error('Неверный ответ сервера')}if(!res.ok)throw Error(data.detail||data.message||('HTTP '+res.status));return data};
 function toast(text){const el=$('toast');el.textContent=text;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4800)}
 const researchScreens = new Set(['analysis','evaluation','models','agents','system']);
-function navigate(screen){if(!$('screen-'+screen))return;application.screen=screen;qsa('.screen').forEach(e=>e.classList.toggle('hidden',e.id!=='screen-'+screen));qsa('.nav-item').forEach(e=>{const active=e.dataset.screen===screen;e.classList.toggle('selected',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')});$('breadcrumb').textContent={overview:'Обзор обучения',games:'Партии и анализ',analysis:'Диагностика модели',runs:'Эксперименты',guide:'Методика',evaluation:'Evaluation',models:'Модели и checkpoint',agents:'Agent Lab',system:'Ресурсы и данные'}[screen];if(screen==='games')loadGames();if(screen==='runs')renderRuns();if(researchScreens.has(screen))loadAnalysis()}
+function navigate(screen){if(!$('screen-'+screen))return;const changed=screen!==application.screen;application.screen=screen;savePrefs({screen});qsa('.screen').forEach(e=>e.classList.toggle('hidden',e.id!=='screen-'+screen));qsa('.nav-item').forEach(e=>{const active=e.dataset.screen===screen;e.classList.toggle('selected',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')});$('breadcrumb').textContent={overview:'Обзор обучения',games:'Партии и анализ',analysis:'Диагностика модели',runs:'Эксперименты',guide:'Методика',evaluation:'Evaluation',models:'Модели и checkpoint',agents:'Agent Lab',system:'Ресурсы и данные'}[screen];if(screen==='games')loadGames();if(screen==='runs')renderRuns();if(researchScreens.has(screen))loadAnalysis();if(changed)window.scrollTo({top:0,behavior:'instant'})}
 function classResult(result){return result==='1-0'||result==='0-1'?'win':result==='1/2-1/2'?'draw':'pending'}
 const graphState = new WeakMap();
 const LA=globalThis.LabAnalytics;
+const UX=globalThis.LabUX;
+const prefsKey='chessai.lab.ux.v1';
+function readPrefs(){try{return JSON.parse(localStorage.getItem(prefsKey)||'{}')||{}}catch(_){return {}}}
+function savePrefs(change){try{localStorage.setItem(prefsKey,JSON.stringify({...readPrefs(),...change}))}catch(_){}}
+let replayFlipped=!!readPrefs().flipped,replayTimer=null,replayRequest=0,commandIndex=0;
 let chartAnchor=null,chartRun=null,referenceSnapshot=null,referenceRequest=0,reportRun=null,reportList=[],profileRows=[];
 let chartExport=[];
 function graph(container, values, {accent='#fff',height=245,unit='',ymin=null,iterations=null,overlay=[],overlayName='',smoothPeriod=0}={}){
@@ -251,11 +256,11 @@ async function refresh(){if(application.inFlight)return;application.inFlight=tru
   if(!d.selected && application.selected) application.selected=null;
   renderOverview(d);$('stop-btn').disabled=false;$('resume-btn').disabled=false;const updated=new Date().toLocaleTimeString('ru-RU');$('sync-label').title+='\nОбновлено: '+updated;$('footer-sync').textContent=(d.file_warnings?.length?'Кэш · ':'Локальные данные · ')+'обновлено '+updated;
 }catch(e){$('sync-label').textContent='Нет связи · данные устарели';$('sync-label').parentElement.classList.add('disconnected');$('sync-label').parentElement.classList.remove('pending');$('footer-sync').textContent='Нет связи · показаны последние доступные данные';$('open-config').disabled=true;$('runs-new').disabled=true;$('stop-btn').disabled=true;$('resume-btn').disabled=true;}finally{application.inFlight=false}}
-function configModal(open){application.overlayOpen=open;$('config-overlay').classList.toggle('hidden',!open);$('config-overlay').setAttribute('aria-hidden',String(!open));if(open)$('c-iterations').focus()}
+function configModal(open,force=false){const el=$('config-overlay');if(open){if(el.open||$('open-config').disabled||application.overview?.process?.active)return;application.overlayOpen=true;el.classList.remove('hidden');el.showModal();$('c-iterations').focus();updateConfigSummary()}else if(el.open&&(force||!$('start-training').disabled)){persistDraft();el.close()}}
 const presets={quick:{iterations:2,games:2,parallel:2,plies:140,temp:1.1,arena:0,opening:0},balanced:{iterations:10,games:8,parallel:4,plies:240,temp:1.1,arena:2,opening:6},long:{iterations:100,games:16,parallel:8,plies:300,temp:1.1,arena:4,opening:6}};
-function applyPreset(name){const p=presets[name];if(!p)return;qsa('[data-preset]').forEach(b=>b.classList.toggle('chosen',b.dataset.preset===name));for(const k of Object.keys(p))$('c-'+k).value=p[k]}
+function applyPreset(name){const p=presets[name];if(!p)return;qsa('[data-preset]').forEach(b=>b.classList.toggle('chosen',b.dataset.preset===name));for(const k of Object.keys(p))$('c-'+k).value=p[k];persistDraft();updateConfigSummary()}
 async function startTraining(){const payload={iterations:+$('c-iterations').value,games_per_iteration:+$('c-games').value,parallel:+$('c-parallel').value,max_plies:+$('c-plies').value,temperature:+$('c-temp').value,arena_games:+$('c-arena').value,opening_plies:+$('c-opening').value,league_fraction:+$('c-league').value/100, repetition_penalty:+$('c-repeat').value, target_kl:+$('c-kl').value,bridge_workers:+$('c-workers').value,batch_size:+$('c-batch').value,archive_every:+$('c-archive').value};
-  const btn=$('start-training');if(btn.disabled||application.overview?.process?.active)return;const invalid=qsa('#config-overlay input').find(el=>!el.checkValidity());if(invalid){invalid.closest('details')?.setAttribute('open','');invalid.reportValidity();return}btn.disabled=true;$('config-error').textContent='';try{const d=await api('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});application.selected=d.run;configModal(false);navigate('overview');await refresh();toast('Эксперимент запущен: '+d.run)}catch(e){$('config-error').textContent=e.message}finally{btn.disabled=false}}
+  const btn=$('start-training');if(btn.disabled||application.overview?.process?.active||$('sync-label').parentElement.classList.contains('disconnected'))return;const invalid=qsa('#config-overlay input').find(el=>!el.checkValidity());if(invalid){invalid.closest('details')?.setAttribute('open','');invalid.reportValidity();return}const issues=UX.validateTraining(payload);if(issues.length){const [id,msg]=issues[0];$(id).closest('details')?.setAttribute('open','');$(id).focus();$('config-error').textContent=msg;return}btn.disabled=true;btn.setAttribute('aria-busy','true');$('config-error').textContent='';try{const d=await api('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});application.selected=d.run;configModal(false,true);navigate('overview');await refresh();toast('Эксперимент запущен: '+d.run)}catch(e){$('config-error').textContent=e.message}finally{btn.disabled=false;btn.removeAttribute('aria-busy')}}
 async function stopTraining(){if(!application.overview?.process?.active||$('stop-btn').disabled)return;if(!await askConfirm('Остановить обучение после окончания текущей итерации? Результаты сохранятся.'))return;if(!application.overview?.process?.active||application.overview.process.run!==application.selected)return;$('stop-btn').disabled=true;try{await api('/api/stop',{method:'POST'});toast('Запрос остановки принят. Текущая итерация завершится.')}catch(e){toast(e.message)}finally{$('stop-btn').disabled=false}}
 let resumeRun=null;
 function resumeTraining(){
@@ -281,55 +286,73 @@ function askConfirm(message){
   $('confirm-message').textContent=message;dialog.returnValue='cancel';
   return new Promise(resolve=>{dialog.addEventListener('close',()=>resolve(dialog.returnValue==='confirm'),{once:true});dialog.showModal()});
 }
-const pieceGlyph={K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟︎'};
-function expandFen(fen){const rows=fen.split(' ')[0].split('/');if(rows.length!==8)throw Error('FEN: неверное число рядов');return rows.map(row=>{let squares=[];for(const c of row){if(/[1-8]/.test(c))squares.push(...Array(+c).fill('.'));else if(pieceGlyph[c])squares.push(c);else throw Error('Неверный символ FEN')}if(squares.length!==8)throw Error('FEN: неверная длина ряда');return squares})}
-function replayPosition(step){const game=application.replay;if(!game)return;step=Math.max(0,Math.min(step,game.moves.length));application.replayStep=step;
-  const fen=game.fens[step],board=expandFen(fen),lastMove=step?game.moves[step-1]:'';
-  let a=lastMove.slice(0,2),b=lastMove.slice(2,4);
-  let markup='';for(let r=0;r<8;r++)for(let f=0;f<8;f++){
-    const square='abcdefgh'[f]+(8-r),piece=board[r][f],last=step>0 && (square===a||square===b);
-    markup+=`<div class="square ${(r+f)%2===0?'light':'dark'} ${last?'last':''}">${piece!=='.'?`<span class="piece ${piece===piece.toUpperCase()?'white':'black'}">${pieceGlyph[piece]}</span>`:''}${r===7||f===0?`<span class="coord">${r===7?'abcdefgh'[f]:8-r}</span>`:''}</div>`;
-  }
-  $('replay-board').innerHTML=markup;
-  $('replay-fen').textContent=fen;$('replay-turn').textContent=fen.split(' ')[1]==='w'?'Ход белых':'Ход чёрных';
-  $('replay-step').textContent=`${step} / ${game.moves.length}`;
-  $('replay-range').value=step;
-  qsa('#replay-moves button').forEach(b=>b.classList.toggle('current',+b.dataset.step===step));
-  const selected=$(`replay-move-${step}`);if(selected)selected.scrollIntoView({block:'nearest'});
+const pieceNames={K:'король',Q:'ферзь',R:'ладья',B:'слон',N:'конь',P:'пешка'};
+// Self-authored vector silhouettes, independent of fonts or remote assets.
+const piecePaths={
+ P:'<circle cx="24" cy="12" r="6"/><path d="M18 19h12c-2 8 1 11 7 15v5H11v-5c6-4 9-7 7-15Z"/>',
+ R:'<path d="M10 8h7v6h5V8h5v6h5V8h6v15l-5 5v6l5 5H10l5-5v-6l-5-5Z"/>',
+ N:'<path d="M13 39h25l-3-7c-1-12-6-19-16-24l-1 7-8 10 4 6 10-5-5 9Z"/><circle cx="22" cy="18" r="1.5" class="piece-detail"/>',
+ B:'<path d="M24 5c-5 6-11 11-11 18 0 4 3 7 7 8l-5 5-4 3h26l-4-3-5-5c4-1 7-4 7-8 0-7-6-12-11-18Z"/><path d="m27 12-7 10" class="piece-line"/>',
+ Q:'<path d="m8 14 7 5 4-8 5 9 5-9 4 8 7-5-5 17-3 4 5 4H11l5-4-3-4Z"/><circle cx="8" cy="11" r="2.5"/><circle cx="19" cy="8" r="2.5"/><circle cx="29" cy="8" r="2.5"/><circle cx="40" cy="11" r="2.5"/>',
+ K:'<path d="M24 9v12M18 15h12" class="piece-line king-cross"/><path d="M24 20c-4-8-17-6-17 3 0 6 8 9 10 12l-5 4h24l-5-4c2-3 10-6 10-12 0-9-13-11-17-3Z"/>'
+};
+function pieceSvg(piece){return '<svg viewBox="0 0 48 48" class="piece-svg '+(piece===piece.toUpperCase()?'white':'black')+'" aria-hidden="true">'+piecePaths[piece.toUpperCase()]+'</svg>'}
+function pauseReplay(){clearTimeout(replayTimer);replayTimer=null;$('replay-play').textContent='Воспроизвести';$('replay-play').setAttribute('aria-pressed','false')}
+function replayPosition(step){const game=application.replay;if(!game)return;
+ step=UX.stepIndex(0,step,game.moves.length);application.replayStep=step;
+ const fen=game.fens[step],last=step?game.moves[step-1]:'',squares=UX.squares(fen,replayFlipped,last);
+ $('replay-board').innerHTML=squares.map(s=>'<div class="square '+(s.light?'light':'dark')+(s.last?' last':'')+'" title="'+s.square+'">'+(s.piece!=='.'?pieceSvg(s.piece):'')+(s.file?'<span class="coord file">'+s.file+'</span>':'')+(s.rank?'<span class="coord rank">'+s.rank+'</span>':'')+'</div>').join('');
+ const turn=fen.split(' ')[1]==='w'?'Ход белых':'Ход чёрных';$('replay-board').setAttribute('aria-label','Позиция '+step+'. '+turn+'. '+squares.filter(s=>s.piece!=='.').map(s=>s.square+' '+(s.piece===s.piece.toUpperCase()?'белые ':'чёрные ')+pieceNames[s.piece.toUpperCase()]).join(', '));
+ $('replay-fen').textContent=fen;$('replay-turn').textContent=turn;$('replay-step').textContent=step+' / '+game.moves.length;$('replay-range').value=step;
+ $('replay-first').disabled=$('replay-prev').disabled=step===0;$('replay-last').disabled=$('replay-next').disabled=step===game.moves.length;
+ $('replay-flip').setAttribute('aria-pressed',String(replayFlipped));
+ qsa('#replay-moves button').forEach(b=>{const current=+b.dataset.step===step;b.classList.toggle('current',current);if(current)b.setAttribute('aria-current','step');else b.removeAttribute('aria-current')});
+ const selected=$('replay-move-'+step),list=$('replay-moves');if(selected){const a=selected.getBoundingClientRect(),b=list.getBoundingClientRect();if(a.top<b.top)list.scrollTop+=a.top-b.top;else if(a.bottom>b.bottom)list.scrollTop+=a.bottom-b.bottom}
+ if(step===game.moves.length)pauseReplay();
 }
-async function showReplay(gameId,kind){if(!application.selected)return;try{
-  const game=await api(`/api/game/${gameId}?`+new URLSearchParams({run:application.selected,kind}));
-  if(!game.fens||game.fens.length!==game.moves.length+1)throw Error('Неполная история позиций');
-  application.replay=game;$('game-modal-title').textContent=`Партия #${game.game_id}`;
-  $('replay-result').textContent=resultNames[game.result]||game.result;
-  $('replay-metadata').textContent=`${reasonNames[game.reason]||game.reason} · ${game.plies} полуходов · Итерация ${game.iteration||'—'}${kind==='arena'?' · Arena':' · Self-play'}`;
-  let html='';for(let i=0;i<game.moves.length;i+=2){html+=`<div class="move-pair"><span class="move-number">${1+i/2}.</span><button data-step="${i+1}" id="replay-move-${i+1}">${esc(game.moves[i])}</button>${game.moves[i+1]?`<button data-step="${i+2}" id="replay-move-${i+2}">${esc(game.moves[i+1])}</button>`:''}</div>`}
-  $('replay-moves').innerHTML=html;$('replay-range').max=game.moves.length;$('game-overlay').classList.remove('hidden');$('game-overlay').setAttribute('aria-hidden','false');replayPosition(0);
-}catch(e){toast('Не удалось открыть партию: '+e.message)}}
-function closeReplay(){$('game-overlay').classList.add('hidden');$('game-overlay').setAttribute('aria-hidden','true');application.replay=null}
+function playReplay(){if(!application.replay)return;if(replayTimer!==null){pauseReplay();return}if(application.replayStep===application.replay.moves.length)replayPosition(0);if(!application.replay.moves.length)return;
+ $('replay-play').textContent='Пауза';$('replay-play').setAttribute('aria-pressed','true');
+ const next=()=>{if(!application.replay||document.hidden){pauseReplay();return}replayPosition(application.replayStep+1);if(application.replayStep<application.replay.moves.length)replayTimer=setTimeout(next,+$('replay-speed').value)};
+ replayTimer=setTimeout(next,+$('replay-speed').value);
+}
+async function showReplay(gameId,kind){if(!application.selected)return;const run=application.selected,request=++replayRequest;try{
+ const game=await api('/api/game/'+gameId+'?'+new URLSearchParams({run,kind}));
+ if(request!==replayRequest||application.selected!==run)return;
+ if(!Array.isArray(game.moves)||!Array.isArray(game.fens)||game.fens.length!==game.moves.length+1)throw Error('Неполная история позиций');
+ game.fens.forEach(UX.parseFen);pauseReplay();application.replay=game;$('game-modal-title').textContent='Партия #'+game.game_id;
+ $('replay-result').textContent=resultNames[game.result]||game.result;
+ $('replay-metadata').textContent=(reasonNames[game.reason]||game.reason)+' · '+game.plies+' полуходов · Итерация '+(game.iteration??'—')+(kind==='arena'?' · Arena':' · Self-play');
+ let html='';for(let i=0;i<game.moves.length;i+=2){html+='<div class="move-pair"><span class="move-number">'+(1+i/2)+'.</span><button data-step="'+(i+1)+'" id="replay-move-'+(i+1)+'">'+esc(game.moves[i])+'</button>'+(game.moves[i+1]?'<button data-step="'+(i+2)+'" id="replay-move-'+(i+2)+'">'+esc(game.moves[i+1])+'</button>':'')+'</div>'}
+ $('replay-moves').innerHTML=html;$('replay-range').max=game.moves.length;const dialog=$('game-overlay');dialog.classList.remove('hidden');if(!dialog.open)dialog.showModal();replayPosition(0);$('replay-board').focus();
+}catch(e){if(request===replayRequest)toast('Не удалось открыть партию: '+e.message)}}
+function closeReplay(){replayRequest++;pauseReplay();const dialog=$('game-overlay');if(dialog.open)dialog.close();application.replay=null}
 document.addEventListener('click',e=>{const nav=e.target.closest('[data-screen]');if(nav){navigate(nav.dataset.screen);return}
   const goto=e.target.closest('[data-goto]');if(goto){navigate(goto.dataset.goto);return}
   const preset=e.target.closest('[data-preset]');if(preset){applyPreset(preset.dataset.preset);return}
   const replay=e.target.closest('.view-game');if(replay){showReplay(+replay.dataset.id,replay.dataset.kind);return}
   const tab=e.target.closest('[data-metric]');if(tab){application.metric=tab.dataset.metric;qsa('[data-metric]').forEach(b=>b.classList.toggle('on',b===tab));if(application.overview)renderOverview(application.overview);return}
   const run=e.target.closest('[data-run]');if(run){application.selected=run.dataset.run;navigate('overview');refresh();return}
-  const move=e.target.closest('.move-list button[data-step]');if(move){replayPosition(+move.dataset.step);return}});
+  const move=e.target.closest('.move-list button[data-step]');if(move){pauseReplay();replayPosition(+move.dataset.step);return}});
 async function startEvaluation(){
+  if($('start-evaluation').disabled)return;
   if(!application.selected){toast('Выберите эксперимент');return}
   const payload={games:+$('eval-games').value,max_plies:+$('eval-plies').value,
        opening_plies:+$('eval-openings').value,opponent:$('eval-opponent').value,suite:$('eval-suite').value};
+  const invalid=['eval-games','eval-plies','eval-openings'].map($).find(el=>!el.checkValidity()||el.value==='');if(invalid){invalid.reportValidity();toast('Проверьте параметры Evaluation');return}if(payload.games%2){toast('Число партий должно быть чётным');return}const run=application.selected;$('start-evaluation').disabled=true;$('start-tournament').disabled=true;
   try{const result=await api('/api/evaluation/'+encodeURIComponent(application.selected),
       {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       toast('Evaluation запущена: '+result.filename);await loadAnalysis()}
-  catch(e){toast('Evaluation: '+e.message)}
+  catch(e){toast('Evaluation: '+e.message)}finally{$('start-evaluation').disabled=false;$('start-tournament').disabled=false}
 }
 async function startTournament(){
+  if($('start-tournament').disabled)return;
   if(!application.selected){toast('Выберите эксперимент');return}
+  $('start-evaluation').disabled=true;$('start-tournament').disabled=true;
   try{const result=await api('/api/tournament/'+encodeURIComponent(application.selected),
      {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({games:20,last:8,max_plies:400,opening_plies:8})});
      toast('Турнир запущен: '+result.filename);await loadAnalysis()}
-  catch(e){toast('Турнир: '+e.message)}
+  catch(e){toast('Турнир: '+e.message)}finally{$('start-evaluation').disabled=false;$('start-tournament').disabled=false}
 }
 $('start-tournament').onclick=startTournament;
 $('start-evaluation').onclick=startEvaluation;
@@ -339,10 +362,9 @@ $('start-training').onclick=startTraining;$('stop-btn').onclick=stopTraining;$('
 $('export-csv').onclick=()=>{if(!application.selected){toast('Сначала выберите эксперимент');return}window.location.href='/api/export/metrics.csv?run='+encodeURIComponent(application.selected)};
 $('close-game').onclick=closeReplay;$('config-overlay').onclick=e=>{if(e.target===$('config-overlay'))configModal(false)};$('game-overlay').onclick=e=>{if(e.target===$('game-overlay'))closeReplay()};
 $('run-picker').onchange=e=>{application.selected=e.target.value||null;refresh()};$('game-kind').onchange=loadGames;$('game-result').onchange=loadGames;
-$('replay-range').oninput=e=>replayPosition(+e.target.value);
-$('replay-first').onclick=()=>replayPosition(0);$('replay-last').onclick=()=>replayPosition(application.replay?.moves.length||0);
-$('replay-next').onclick=()=>replayPosition(application.replayStep+1);$('replay-prev').onclick=()=>replayPosition(application.replayStep-1);
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeReplay();configModal(false)}if(application.replay&&e.key==='ArrowRight')replayPosition(application.replayStep+1);if(application.replay&&e.key==='ArrowLeft')replayPosition(application.replayStep-1)});
+$('replay-range').oninput=e=>{pauseReplay();replayPosition(+e.target.value)};
+for(const [id,step] of [['replay-first',()=>0],['replay-last',()=>application.replay?.moves.length||0],['replay-next',()=>application.replayStep+1],['replay-prev',()=>application.replayStep-1]])$(id).onclick=()=>{pauseReplay();replayPosition(step())};
+$('replay-board').onkeydown=e=>{if(['ArrowRight','ArrowLeft','Home','End'].includes(e.key)){e.preventDefault();pauseReplay();replayPosition(e.key==='Home'?0:e.key==='End'?application.replay.moves.length:application.replayStep+(e.key==='ArrowRight'?1:-1))}};
 async function poll(){try{if(!document.hidden&&!application.overlayOpen&&!application.replay&&!$('command-dialog').open&&!$('resume-dialog').open&&!$('confirm-dialog').open){await refresh();if(application.screen==='games')await loadGames();if(researchScreens.has(application.screen))await loadAnalysis()}}finally{setTimeout(poll,2500)}}
 
 $('compact-storage').onclick=async()=>{if(!application.selected){toast('Выберите эксперимент');return}if(!await askConfirm('Обучение остановлено? Сжать журналы эксперимента без потери истории?'))return;try{const d=await api('/api/storage/'+encodeURIComponent(application.selected)+'/compact',{method:'POST'});toast('Безопасное сжатие выполнено: '+num(d.result.saved_bytes/1048576,1)+' МБ освобождено');await loadAnalysis()}catch(e){toast('Сжатие: '+e.message)}};
@@ -409,12 +431,12 @@ function collapse(value){shell.classList.toggle('collapsed',value);$('sidebar-to
 try{collapse(localStorage.getItem('lab.sidebar')==='true')}catch(_){}
 $('sidebar-toggle').onclick=()=>collapse(!shell.classList.contains('collapsed'));
 const command=$('command-dialog');
-function commandFilter(){const q=$('command-search').value.toLowerCase();const buttons=qsa('.nav-item').filter(b=>b.title.toLowerCase().includes(q));$('command-results').replaceChildren(...buttons.map(b=>{const el=document.createElement('button');el.className='button subtle';el.textContent=b.title;el.onclick=()=>{command.close();navigate(b.dataset.screen)};return el}));if(!buttons.length)$('command-results').textContent='Нет совпадений'}
+function commandFilter(){const commands=qsa('.nav-item').map(b=>({label:b.title,keywords:b.dataset.screen+' раздел',run:()=>navigate(b.dataset.screen)}));commands.push({label:'Обновить данные',keywords:'refresh reload',run:refresh},{label:'Настроить новое обучение',keywords:'training new start',run:()=>configModal(true),disabled:$('open-config').disabled},{label:'Скачать метрики CSV',keywords:'export скачать',run:()=>$('export-csv').click(),disabled:!application.selected},{label:'Свернуть / развернуть навигацию',keywords:'sidebar',run:()=>collapse(!shell.classList.contains('collapsed'))});const matches=UX.filterCommands(commands,$('command-search').value);commandIndex=0;$('command-results').replaceChildren(...matches.map(item=>{const el=document.createElement('button');el.className='button subtle command-option';el.textContent=item.label;el.disabled=!!item.disabled;el.onclick=()=>{command.close();item.run()};return el}));if(!matches.length)$('command-results').textContent='Нет совпадений';highlightCommand(0)}
+function highlightCommand(delta){const buttons=qsa('#command-results button:not(:disabled)');if(!buttons.length)return;commandIndex=(commandIndex+delta+buttons.length)%buttons.length;for(const b of buttons)b.classList.toggle('command-active',b===buttons[commandIndex]);buttons[commandIndex].scrollIntoView({block:'nearest'})}
 function openCommand(){if(application.overlayOpen||application.replay||command.open||$('resume-dialog').open||$('confirm-dialog').open)return;command.showModal();$('command-search').value='';commandFilter();$('command-search').focus()}
-$('command-open').onclick=openCommand;$('command-close').onclick=()=>command.close();$('command-search').oninput=commandFilter;$('command-search').onkeydown=e=>{if(e.key==='Enter')$('command-results').querySelector('button')?.click()};
+$('command-open').onclick=openCommand;$('command-close').onclick=()=>command.close();$('command-search').oninput=commandFilter;$('command-search').onkeydown=e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();highlightCommand(e.key==='ArrowDown'?1:-1)}if(e.key==='Enter'){e.preventDefault();qsa('#command-results button:not(:disabled)')[commandIndex]?.click()}};
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openCommand()}});
-poll();
-
+// Preferences restored before the first polling request.
 $('resume-form').onsubmit=submitResume;
 for(const id of ['resume-close','resume-cancel'])$(id).onclick=()=>{if(!$('resume-submit').disabled)$('resume-dialog').close()};
 $('resume-dialog').addEventListener('cancel',e=>{if($('resume-submit').disabled)e.preventDefault()});
@@ -424,3 +446,22 @@ if(typeof ResizeObserver==='function'){
   const observer=new ResizeObserver(entries=>{for(const entry of entries){const el=entry.target,state=graphState.get(el);if(!state||!el.clientWidth||!el.clientHeight)continue;graph(el,state.values,state.options)}});
   for(const id of ['main-chart','speed-chart','completion-chart','analysis-value-chart','kl-chart','clip-chart','performance-chart','batch-chart'])observer.observe($(id));
 }
+
+function persistDraft(){const draft=Object.fromEntries(qsa('#config-overlay input[id]').map(el=>[el.id,el.value]));savePrefs({draft});$('draft-label').textContent='Черновик сохранён в этом браузере'}
+function updateConfigSummary(){const i=+$('c-iterations').value,g=+$('c-games').value,p=+$('c-parallel').value;const valid=Number.isSafeInteger(i)&&i>0&&Number.isSafeInteger(g)&&g>0;const issues=UX.validateTraining({parallel:p,games_per_iteration:g,arena_games:+$('c-arena').value});$('config-summary').textContent=(valid?'План: '+fmt(i*g)+' self-play партий · '+fmt(p)+' параллельно. ':'')+(issues[0]?.[1]||'Без учёта проверочных матчей.');$('config-summary').classList.toggle('invalid',!!issues.length)}
+for(const el of qsa('#config-overlay input[id]'))el.addEventListener('input',()=>{qsa('[data-preset]').forEach(b=>b.classList.remove('chosen'));persistDraft();updateConfigSummary()});
+$('draft-reset').onclick=()=>{for(const el of qsa('#config-overlay input[id]'))el.value=el.defaultValue;qsa('[data-preset]').forEach(b=>b.classList.toggle('chosen',b.dataset.preset==='balanced'));persistDraft();updateConfigSummary()};
+$('config-overlay').addEventListener('cancel',e=>{if($('start-training').disabled)e.preventDefault();else persistDraft()});
+$('config-overlay').addEventListener('close',()=>{if($('config-overlay').open)return;application.overlayOpen=false;$('config-overlay').classList.add('hidden')});
+$('game-overlay').addEventListener('close',()=>{if($('game-overlay').open)return;pauseReplay();application.replay=null;$('game-overlay').classList.add('hidden')});
+$('replay-flip').onclick=()=>{replayFlipped=!replayFlipped;savePrefs({flipped:replayFlipped});replayPosition(application.replayStep)};
+$('copy-uci').onclick=()=>{if(application.replay)copyText(application.replay.moves.join(' '))};
+$('replay-play').onclick=playReplay;
+document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseReplay()});
+const savedUX=readPrefs();if(savedUX.draft&&typeof savedUX.draft==='object'){for(const el of qsa('#config-overlay input[id]')){const value=savedUX.draft[el.id];if(typeof value==='string'){el.value=value;if(!el.checkValidity())el.value=el.defaultValue}}qsa('[data-preset]').forEach(b=>b.classList.remove('chosen'))}
+if(['value','policy','entropy'].includes(savedUX.metric)){application.metric=savedUX.metric;qsa('[data-metric]').forEach(b=>b.classList.toggle('on',b.dataset.metric===application.metric))}
+if(['all','25','100','250'].includes(savedUX.range))$('chart-range').value=savedUX.range;
+if(typeof savedUX.smooth==='boolean')$('chart-smooth').checked=savedUX.smooth;
+$('chart-range').addEventListener('change',()=>savePrefs({range:$('chart-range').value}));$('chart-smooth').addEventListener('change',()=>savePrefs({smooth:$('chart-smooth').checked}));document.addEventListener('click',e=>{if(e.target.closest('[data-metric]'))savePrefs({metric:application.metric})});
+if(typeof savedUX.screen==='string'&&$('screen-'+savedUX.screen))navigate(savedUX.screen);
+updateConfigSummary();poll();
