@@ -20,6 +20,8 @@ class VisionViewModel(QObject):
         self._analysis = controller.analysis
         self._journal = []
         self._visible = []
+        self._journal_query = ''
+        self._journal_category = 'all'
         self._board = BoardHistory()
 
     @Property(str, notify=sessionChanged)
@@ -108,8 +110,19 @@ class VisionViewModel(QObject):
         self._journal = [{'category': e.category, 'text': e.text} for e in events][-600:]
         self.filterJournal('', 'all')
 
+    @Property(str, notify=journalChanged)
+    def journalQuery(self):
+        return self._journal_query
+
+    @Property(str, notify=journalChanged)
+    def journalCategory(self):
+        return self._journal_category
+
     @Slot(str, str)
     def filterJournal(self, query, category):
+        self._journal_query = query
+        self._journal_category = category if category in ('all','analysis','move','error','info') else 'all'
+        category = self._journal_category
         q = query.casefold().strip()
         self._visible = [row for row in self._journal
                          if (category == 'all' or row['category'] == category)
