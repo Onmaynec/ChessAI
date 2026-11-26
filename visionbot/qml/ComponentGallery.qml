@@ -7,10 +7,12 @@ ScrollView {
     objectName: "componentGallery"
     clip: true
     contentWidth: availableWidth
+    contentHeight: galleryContent.implicitHeight + 40
     property int demoClicks: 0
     property bool demoSelected: false
 
     ColumnLayout {
+        id: galleryContent
         width: Math.max(1,gallery.availableWidth - 40)
         x: 20; y: 20
         spacing: 16
