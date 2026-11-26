@@ -91,3 +91,9 @@ test('replay uses saved FEN, rotates coordinates and plays without backend write
  await page.locator('#replay-play').click();await expect(page.locator('#replay-step')).toHaveText('1 / 1');
  await expect(page.locator('#replay-board .last')).toHaveCount(2);await page.keyboard.press('Escape');await expect(page.locator('#game-overlay')).not.toBeVisible();
 });
+
+test('automatic reconnect without reloading',async({page})=>{
+ let calls=0;await page.route('**/api/overview*',r=>++calls===1?r.abort():r.fulfill({json:{runs:[],selected:null,process:{active:false},state:null,metadata:null,metrics:[],games:[],log:[],file_warnings:[]}}));
+ await page.goto(root);await expect(page.locator('#sync-label')).toContainText('Нет связи');await expect(page.locator('#open-config')).toBeDisabled();
+ await expect(page.locator('#sync-label')).toContainText('Локальные данные',{timeout:15000});await expect(page.locator('#open-config')).toBeEnabled();
+});

@@ -1,0 +1,13 @@
+'use strict';const A=require('../dashboard/ui/reliability.js'),assert=require('node:assert/strict');
+assert.equal(A.delay(0,true,false,false),2500);
+assert.equal(A.delay(0,false,false,false),5000);
+assert.equal(A.delay(0,true,false,true),5000);
+assert.equal(A.delay(0,true,true,false),15000);
+assert.equal(A.delay(1,true,false,false),5000);
+assert.equal(A.delay(2,true,false,false),10000);
+assert.equal(A.delay(100,true,false,false),30000);
+assert.equal(A.due(null,0,100),true);
+assert.equal(A.due(10,109,100),false);
+assert.equal(A.due(10,110,100),true);
+const g=A.gate(),a=g.next(),b=g.next();assert.equal(g.current(a),false);assert.equal(g.current(b),true);
+console.log('12 reliability assertions passed');

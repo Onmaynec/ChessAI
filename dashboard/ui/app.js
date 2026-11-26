@@ -8,14 +8,28 @@ const statusNames = {running:'ОБУЧЕНИЕ ИДЁТ',completed:'ЗАВЕРШ
 const resultNames = {'1-0':'Победа белых','0-1':'Победа чёрных','1/2-1/2':'Ничья','*':'Не завершена'};
 const reasonNames = {checkmate:'Шах и мат',stalemate:'Пат',insufficient_material:'Недостаточно материала',threefold_repetition_claimed:'Троекратное повторение',fivefold_repetition:'Пятикратное повторение', '50_move_rule_claimed':'Правило 50 ходов','75_move_rule':'Правило 75 ходов',max_plies_unfinished:'Достигнут лимит полуходов',ongoing:'Продолжается'};
 const application = {selected:null, screen:'overview', metric:'value', overview:null, replay:null, replayStep:0, inFlight:false, overlayOpen:false};
-const api = async (url, opts) => {const res=await fetch(url,{cache:'no-store',...opts});let data={};try{data=await res.json()}catch(_){throw Error('Неверный ответ сервера')}if(!res.ok)throw Error(data.detail||data.message||('HTTP '+res.status));return data};
+const api=async(url,opts={})=>{
+ const controller=(!opts.method||opts.method==='GET')?new AbortController():null;
+ const timer=controller?setTimeout(()=>controller.abort(),12000):null;
+ try{const res=await fetch(url,{cache:'no-store',...opts,...(controller?{signal:controller.signal}:{})});let data;try{data=await res.json()}catch(e){if(e.name==='AbortError')throw e;throw Error('Неверный ответ сервера')}
+ if(!res.ok){const error=Error(typeof data.detail==='string'?data.detail:data.message||('HTTP '+res.status));error.status=res.status;throw error}return data;
+ }catch(e){if(e.name==='AbortError')throw Error('Сервер не ответил за 12 секунд');throw e}finally{if(timer!==null)clearTimeout(timer)}
+};
 function toast(text){const el=$('toast');el.textContent=text;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4800)}
 const researchScreens = new Set(['analysis','evaluation','models','agents','system']);
-function navigate(screen){if(!$('screen-'+screen))return;const changed=screen!==application.screen;application.screen=screen;savePrefs({screen});qsa('.screen').forEach(e=>e.classList.toggle('hidden',e.id!=='screen-'+screen));qsa('.nav-item').forEach(e=>{const active=e.dataset.screen===screen;e.classList.toggle('selected',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')});$('breadcrumb').textContent={overview:'Обзор обучения',games:'Партии и анализ',analysis:'Диагностика модели',runs:'Эксперименты',guide:'Методика',evaluation:'Evaluation',models:'Модели и checkpoint',agents:'Agent Lab',system:'Ресурсы и данные'}[screen];if(screen==='games')loadGames();if(screen==='runs')renderRuns();if(researchScreens.has(screen))loadAnalysis();if(changed)window.scrollTo({top:0,behavior:'instant'})}
+function navigate(screen){if(!$('screen-'+screen))return;const changed=screen!==application.screen;application.screen=screen;savePrefs({screen});qsa('.screen').forEach(e=>e.classList.toggle('hidden',e.id!=='screen-'+screen));qsa('.nav-item').forEach(e=>{const active=e.dataset.screen===screen;e.classList.toggle('selected',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')});$('breadcrumb').textContent={overview:'Обзор обучения',games:'Партии и анализ',analysis:'Диагностика модели',runs:'Эксперименты',guide:'Методика',evaluation:'Evaluation',models:'Модели и checkpoint',agents:'Agent Lab',system:'Ресурсы и данные'}[screen];if(changed){researchAt=gamesAt=null}if(screen==='games')loadGames(true);if(screen==='runs'&&application.overview?.selected===application.selected)renderRuns();if(researchScreens.has(screen))loadAnalysis(true);if(changed)window.scrollTo({top:0,behavior:'instant'})}
 function classResult(result){return result==='1-0'||result==='0-1'?'win':result==='1/2-1/2'?'draw':'pending'}
 const graphState = new WeakMap();
 const LA=globalThis.LabAnalytics;
-const UX=globalThis.LabUX;
+const UX=globalThis.LabUX,REL=globalThis.LabReliability;
+let failures=0,connected=false,selectionPending=false,refreshAgain=false,stopPending=false,stopSentRun=null,healthSnapshot=null,healthAt=null,pollTimer=null,pollRunning=false;
+const generation=REL.gate();let researchAt=null,researchKey='',gamesAt=null,gamesKey='';
+const htmlCache=new WeakMap();
+function setHTML(el,html){const old=htmlCache.get(el);if(old?.html===html&&old.first===el.firstElementChild)return;el.innerHTML=html;htmlCache.set(el,{html,first:el.firstElementChild})}
+function modalActive(){return application.overlayOpen||application.replay||$('command-dialog').open||$('resume-dialog').open||$('confirm-dialog').open}
+function canMutate(){return connected&&!selectionPending&&application.overview?.selected===application.selected&&!application.overview?.file_warnings?.length}
+function updateActionState(){const d=application.overview,locked=!canMutate();$('open-config').disabled=$('runs-new').disabled=locked||!!d?.process?.active||!healthSnapshot?.engine_ready;$('stop-btn').disabled=locked||stopPending||stopSentRun===application.selected;$('resume-btn').disabled=locked||!!d?.process?.active||!healthSnapshot?.engine_ready}
+function selectRun(run){if(run===application.selected)return;application.selected=run;selectionPending=true;generation.next();researchAt=gamesAt=null;closeReplay();$('sync-label').textContent='Загрузка эксперимента…';updateActionState();refresh()}
 const prefsKey='chessai.lab.ux.v1';
 function readPrefs(){try{return JSON.parse(localStorage.getItem(prefsKey)||'{}')||{}}catch(_){return {}}}
 function savePrefs(change){try{localStorage.setItem(prefsKey,JSON.stringify({...readPrefs(),...change}))}catch(_){}}
@@ -132,7 +146,7 @@ function renderOverview(d){
   application.selected=d.selected||null; if(picker.value!==(d.selected||''))picker.value=d.selected||'';$('global-run').textContent=d.selected||'Эксперимент не выбран';$('global-run').title=d.selected||'Эксперимент не выбран';
   const st=d.state||{},c=st.counters||{},meta=d.metadata||{},cfg=meta.config||{};
   const state=st.status||'unknown';
-  $('overview-device').textContent=st.device||'—';$('overview-iteration').textContent=fmt(st.iteration);$('overview-best').textContent=d.best?.best_iteration!=null?'#'+d.best.best_iteration:(d.best?.origin||'—');$('overview-process').textContent=d.process?.active?(d.process.run||'Запущен'):'Нет активного';$('open-config').disabled=!!d.process?.active;$('runs-new').disabled=!!d.process?.active;
+  $('overview-device').textContent=st.device||'—';$('overview-iteration').textContent=fmt(st.iteration);$('overview-best').textContent=d.best?.best_iteration!=null?'#'+d.best.best_iteration:(d.best?.origin||'—');$('overview-process').textContent=d.process?.active?(d.process.run||'Запущен'):'Нет активного';
   const isRunning=d.process?.active && d.process.run===d.selected;
   const interrupted=state==='running' && !isRunning;
   $('run-title').textContent=d.selected ? d.selected : 'Обучение ещё не запускалось';
@@ -144,7 +158,7 @@ function renderOverview(d){
   const accessWarnings=d.file_warnings||[];
   $('sync-label').textContent = accessWarnings.length
     ? `⚠ Файлы временно недоступны (${accessWarnings.length}); использованы последние данные`
-    : (isRunning ? 'Live · обновление 2,5 сек.' : 'Локальные данные');
+    : (isRunning ? 'Live · обновление 2,5 сек.' : 'Локальные данные · 5 сек.');
   $('sync-label').title = accessWarnings.map(w=>`${w.file}: ${w.message}`).join('\n');
   const m=d.metrics||[];
   const completed=m.length?m[m.length-1].iteration:null;
@@ -178,33 +192,34 @@ function renderOverview(d){
   $('arena-hint').textContent=ac?`Счёт по завершённым партиям, n = ${fmt(ac)}`:'Нет завершённых проверочных партий';
   $('arena-wld').textContent=m.length?`В: ${fmt(aw)} · Н: ${fmt(ad)} · П: ${fmt(al)}`:'В: — · Н: — · П: —';
   $('arena-size').textContent=m.length?`${fmt(ap)} проведено · ${fmt(ap-ac)} не окончено`:'Нет данных';
-  $('arena-caption').textContent='vs. frozen v0.2';
-  $('recent-games').innerHTML=d.games.length?d.games.slice(0,6).map(g=>`<tr><td>#${g.game_id} <small> / ${g.iteration}</small></td><td><span class="result-pill ${classResult(g.result)}">${esc(resultNames[g.result]||g.result)}</span></td><td>${esc(reasonNames[g.reason]||g.reason)}</td><td>${fmt(g.plies)}</td><td><button class="table-button view-game" data-id="${g.game_id}" data-kind="selfplay">Просмотр →</button></td></tr>`).join(''):'<tr><td colspan="5" class="table-empty">Партии пока отсутствуют</td></tr>';
+  $('arena-caption').textContent='vs. frozen v0.2 · '+m.length+' последних итераций';
+  setHTML($('recent-games'),d.games.length?d.games.slice(0,6).map(g=>`<tr><td>#${g.game_id} <small> / ${g.iteration}</small></td><td><span class="result-pill ${classResult(g.result)}">${esc(resultNames[g.result]||g.result)}</span></td><td>${esc(reasonNames[g.reason]||g.reason)}</td><td>${fmt(g.plies)}</td><td><button class="table-button view-game" data-id="${g.game_id}" data-kind="selfplay">Просмотр →</button></td></tr>`).join(''):'<tr><td colspan="5" class="table-empty">Партии пока отсутствуют</td></tr>');
   if(application.screen==='runs')renderRuns();
   const sync=$('sync-label').parentElement;sync.classList.toggle('stale',accessWarnings.length>0);sync.classList.remove('disconnected','pending');
 }
 function renderRuns(){const d=application.overview;if(!d)return;
-  $('run-list').innerHTML=d.runs.length?d.runs.map(r=>`<article class="run-card ${r.id===d.selected?'current':''}" data-run="${esc(r.id)}"><span class="status-badge ${esc(r.status)}">${esc(statusNames[r.status]||r.status)}</span><h2>${esc(r.name)}</h2><p>${esc(r.created_at?.replace('T',' ').replace('+00:00',' UTC')||'Дата неизвестна')}</p><div class="run-totals"><span><b>${fmt(r.iteration)}</b> итераций</span><span><b>${fmt(r.games)}</b> партий</span></div></article>`).join(''):'<div class="panel empty-panel">Пока нет экспериментов. Нажмите «Создать запуск».</div>';
+  setHTML($('run-list'),d.runs.length?d.runs.map(r=>`<article class="run-card ${r.id===d.selected?'current':''}" data-run="${esc(r.id)}"><span class="status-badge ${esc(r.status)}">${esc(statusNames[r.status]||r.status)}</span><h2>${esc(r.name)}</h2><p>${esc(r.created_at?.replace('T',' ').replace('+00:00',' UTC')||'Дата неизвестна')}</p><div class="run-totals"><span><b>${fmt(r.iteration)}</b> итераций</span><span><b>${fmt(r.games)}</b> партий</span></div></article>`).join(''):'<div class="panel empty-panel">Пока нет экспериментов. Нажмите «Создать запуск».</div>');
   renderLog(d);
 }
 
-let analysisBusy=false;
-async function loadAnalysis(){if(analysisBusy)return;
+let analysisBusy=false,analysisAgain=false;
+async function loadAnalysis(force=false){if(analysisBusy){if(force)analysisAgain=true;return}const screen=application.screen;if(!researchScreens.has(screen)||selectionPending)return;const key=screen+'|'+application.selected;if(!force&&researchKey===key&&!REL.due(researchAt,Date.now(),screen==='system'?20000:10000))return;
   if(!application.selected){for(const id of ['analysis-warnings','quality-status','best-status','gpu-info','storage-status','performance-status','evaluation-history','tournament-ranking','agent-results','agent-training-health','color-audit-info','hardware-benchmark-info'])$(id).textContent='Выберите или создайте эксперимент.';for(const id of ['a-finished','a-samples','a-score','a-checkpoint'])$(id).textContent='—';for(const id of ['completion-chart','analysis-value-chart','kl-chart','clip-chart'])graph($(id),[]);renderPerformance([]);updateEvaluationReports([],null);$('eval-live').textContent='Нет выбранного эксперимента';return}
-  const run=application.selected;analysisBusy=true;
+  const run=application.selected,valid=()=>application.selected===run&&application.screen===screen&&!selectionPending;analysisBusy=true;researchKey=key;
   try{
-    const data=await api('/api/analysis?run='+encodeURIComponent(run));
-    if(application.selected!==run)return;
-    await loadAgentLab(run);if(application.selected!==run)return;
-    try {
+    if(screen==='agents'){await loadAgentLab(run);if(valid())researchAt=Date.now();return}
+    const data=await api('/api/analysis?'+new URLSearchParams({run,series_limit:'600'}));
+    if(!valid())return;
+    if(screen==='system')try {
       const storage=await api('/api/storage/'+encodeURIComponent(run));
-      if(application.selected!==run)return;const sp=storage.space||{};
+      if(!valid())return;const sp=storage.space||{};
       const mb=x=>num((x||0)/1048576,1)+' МБ';
       $('storage-status').innerHTML=`<div class="diagnostic-item"><strong>На диске: ${mb(sp.total_bytes)}</strong><p>Несжатые журналы: ${mb(sp.journals_bytes)} · Сжатые архивы: ${mb(sp.archives_bytes)} · Checkpoint: ${mb(sp.checkpoint_bytes)} · Прочее: ${mb(sp.other_bytes)}</p></div>`;
-    } catch(error) { $('storage-status').textContent='Место на диске: '+error.message; }
+    } catch(error) { if(valid())$('storage-status').textContent='Место на диске: '+error.message; }
+    if(!valid())return;
     const perf=(data.series||[]).filter(m=>m.performance?.mode).at(-1)?.performance;
     $('performance-status').innerHTML=perf?`<div class="diagnostic-item"><strong>Непрерывные партии · ${fmt(perf.concurrent_games)} слотов · ${fmt(perf.bridge_workers)} C++ workers</strong><p>Открытия: ${num(perf.opening_s,2)} с · ходы C++: ${num(perf.bridge_steps_s,2)} с · инференс: ${num(perf.neural_inference_s,2)} с · PPO: ${num(perf.ppo_s,2)} с · средний GPU-пакет: ${num(perf.average_inference_batch,1)} позиций</p></div>`:'<div class="diagnostic-item"><strong>Профиль пока не записан</strong><p>Появится после итерации на v0.7.0.</p></div>';
-    if(application.selected!==run)return;
+    if(!valid())return;
     const t=data.totals||{}, a=data.arena||{}, c=data.checkpoint||{};
     $('a-finished').textContent=fmt(t.finished);
     $('a-finished-note').textContent=`${num(data.completion_rate==null?null:100*data.completion_rate,1)}% завершённых · ${fmt(t.unfinished)} незавершённых`;
@@ -217,13 +232,13 @@ async function loadAnalysis(){if(analysisBusy)return;
     graph($('completion-chart'),history.map(x=>x.finish_rate),{accent:'#fff',ymin:0,unit:'%',iterations});
     graph($('analysis-value-chart'),history.map(x=>x.value_mse),{accent:'#fff',ymin:0,iterations});
     graph($('kl-chart'),history.map(x=>x.approx_kl),{iterations});graph($('clip-chart'),history.map(x=>x.clip_fraction),{iterations,ymin:0});renderPerformance(history);
-    $('analysis-window-note').textContent='Графики: '+history.length+' из '+(data.series||[]).length+' записей в ответе; серверная сводка ограничена 100 000 строками.';
-    $('analysis-warnings').innerHTML=data.warnings?.length?data.warnings.map(w=>`<div class="diagnostic-item"><strong>${w.level==='warning'?'Внимание':'Замечание'}</strong><p>${esc(w.text)}</p></div>`).join(''):'<div class="diagnostic-item"><strong>Данных пока недостаточно</strong><p>Начните обучение, чтобы увидеть рекомендации.</p></div>';
+    $('analysis-window-note').textContent='Графики: '+history.length+' из '+(data.series_total??(data.series||[]).length)+' записей; серверная сводка ограничена 100 000 строками.';
+    setHTML($('analysis-warnings'),data.warnings?.length?data.warnings.map(w=>`<div class="diagnostic-item"><strong>${w.level==='warning'?'Внимание':'Замечание'}</strong><p>${esc(w.text)}</p></div>`).join(''):'<div class="diagnostic-item"><strong>Данных пока недостаточно</strong><p>Начните обучение, чтобы увидеть рекомендации.</p></div>');
     const evals=data.evaluations||[];updateEvaluationReports(evals,run);
-    $('evaluation-history').innerHTML=evals.length?evals.map(x=>{const v=x.statistics||{};return `<div class="diagnostic-item"><strong>${esc(x.created_at||x.filename)} · ${v.score==null?'—':num(100*v.score,1)+'%'} score</strong><p>${fmt(v.wins)} побед · ${fmt(v.draws)} ничьих · ${fmt(v.losses)} поражений · ${fmt(v.unfinished)} незавершённых · ${fmt(v.completed)} учтённых · ${fmt(v.unique_sequences??'?')} уникальных партий · ${fmt(v.unique_opening_positions??'?')} стартовых позиций · набор: ${esc(x.suite||'legacy')} · ${esc(x.candidate||'—')} vs ${esc(x.reference||'—')}${v.unique_sequences===2 && v.completed>=20?' · ⚠ Повторяющиеся матчи':''}</p></div>`}).join(''):'<div class="diagnostic-item"><strong>Нет дополнительных проверок</strong><p>Запустите scripts/EVALUATE_RUN_WINDOWS.bat для независимой серии матчей. Существующие контрольные матчи показаны в разделе «Обзор».</p></div>';
+    setHTML($('evaluation-history'),evals.length?evals.map(x=>{const v=x.statistics||{};return `<div class="diagnostic-item"><strong>${esc(x.created_at||x.filename)} · ${v.score==null?'—':num(100*v.score,1)+'%'} score</strong><p>${fmt(v.wins)} побед · ${fmt(v.draws)} ничьих · ${fmt(v.losses)} поражений · ${fmt(v.unfinished)} незавершённых · ${fmt(v.completed)} учтённых · ${fmt(v.unique_sequences??'?')} уникальных партий · ${fmt(v.unique_opening_positions??'?')} стартовых позиций · набор: ${esc(x.suite||'legacy')} · ${esc(x.candidate||'—')} vs ${esc(x.reference||'—')}${v.unique_sequences===2 && v.completed>=20?' · ⚠ Повторяющиеся матчи':''}</p></div>`}).join(''):'<div class="diagnostic-item"><strong>Нет дополнительных проверок</strong><p>Запустите scripts/EVALUATE_RUN_WINDOWS.bat для независимой серии матчей. Существующие контрольные матчи показаны в разделе «Обзор».</p></div>');
     const tour=data.tournaments||[];
-    $('tournament-ranking').innerHTML=tour.length?tour.slice(0,2).map(t=>
-      `<div class="diagnostic-item"><strong>${esc(t.filename)} · checkpoint ranking</strong><p>${(t.ranking||[]).slice(0,8).map(x=>`#${x.iteration}: ${x.score==null?'—':num(x.score*100,1)+'%'} (${x.unique_sequences} партий)`).join(' · ')}</p></div>`).join(''):'<div class="diagnostic-item"><strong>Исторических турниров ещё нет</strong><p>Нажмите «Сравнить 8 checkpoint» — тест не меняет веса.</p></div>';
+    setHTML($('tournament-ranking'),tour.length?tour.slice(0,2).map(t=>
+      `<div class="diagnostic-item"><strong>${esc(t.filename)} · checkpoint ranking</strong><p>${(t.ranking||[]).slice(0,8).map(x=>`#${x.iteration}: ${x.score==null?'—':num(x.score*100,1)+'%'} (${x.unique_sequences} партий)`).join(' · ')}</p></div>`).join(''):'<div class="diagnostic-item"><strong>Исторических турниров ещё нет</strong><p>Нажмите «Сравнить 8 checkpoint» — тест не меняет веса.</p></div>');
     const quality=data.quality||{}, reason=quality.termination_reasons||{};
     const reasonText=Object.entries(reason).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k,n])=>`${esc(reasonNames[k]||k)}: ${fmt(n)}`).join(' · ');
     $('quality-status').innerHTML=quality.reason_iterations?`<div class="diagnostic-item"><strong>Причины завершения · ${fmt(quality.reason_iterations)} итераций v0.6</strong><p>${reasonText||'Нет исходов'} · повторения: ${quality.repetition_fraction==null?'—':num(quality.repetition_fraction*100,1)+'%'} · повторные визиты: ${fmt(quality.position_revisits)}</p></div><div class="diagnostic-item"><strong>Ограничение PPO</strong><p>Последний approx KL: ${num(quality.last_approx_kl,5)} · clip fraction: ${num(quality.last_clip_fraction,4)} · градиент: ${num(quality.last_grad_norm,3)} · остановок по KL: ${fmt(quality.kl_early_stops)}</p></div>`:'<div class="diagnostic-item"><strong>Исторический запуск</strong><p>Для этих итераций v0.5 ещё не записывала причины ничьих и KL. При продолжении эксперимента v0.6 добавит новые метрики без пересчёта старых.</p></div>';
@@ -236,32 +251,39 @@ async function loadAnalysis(){if(analysisBusy)return;
     $('best-status').innerHTML=best.at||best.origin?`<div class="diagnostic-item"><strong>${esc(best.origin||best.opponent||'best.pt')} · ${esc(best.status||(best.decision?.promote===true?'promoted':'screening'))}</strong><p>Проверка: ${esc(best.at||best.updated_at||'не выполнялась')} · лучшая итерация: ${fmt(best.best_iteration??0)} · порог: ${esc(best.decision?.threshold??'—')} · ${esc(best.note||best.decision?.note||'')}</p></div>`:'<div class="diagnostic-item"><strong>Best checkpoint ещё не инициализирован</strong><p>Он будет создан при следующем запуске или продолжении обучения, исходный latest.pt не меняется.</p></div>';
     $('gpu-info').textContent=hw.selected?`Вычисления: ${hw.selected} · PyTorch ${hw.torch_version} · CUDA доступна: ${hw.cuda_available?'да':'нет'} ${hw.cuda_device||''}`:'Данные устройства ещё не записаны. Если установлена CPU-сборка PyTorch, обучение работает на CPU.';
     const ev=data.evaluation_process||{};
-    $('eval-live').textContent=ev.active?`Работает: ${ev.output||''}`:'Проверка не выполняется';
-  }catch(error){toast('Диагностика: '+error.message)}finally{analysisBusy=false}
+    $('eval-live').textContent=ev.active?`Работает: ${ev.output||''}`:'Проверка не выполняется';researchAt=Date.now();
+  }catch(error){if(valid()){$('footer-sync').textContent='Диагностика недоступна · '+error.message;researchAt=Date.now()}}finally{analysisBusy=false;if(analysisAgain){analysisAgain=false;queueMicrotask(()=>loadAnalysis(true))}}
 }
 
-let gamesBusy=false;
-async function loadGames(){if(!application.selected){$('games-list').innerHTML='<tr><td colspan="6" class="table-empty">Нет выбранного эксперимента</td></tr>';$('games-count').textContent='—';return}if(gamesBusy)return;gamesBusy=true;const run=application.selected;
-  const kind=$('game-kind').value,result=$('game-result').value;
-  try{const data=await api('/api/games?'+new URLSearchParams({run,kind,result,limit:'50'}));if(application.selected!==run||$('game-kind').value!==kind||$('game-result').value!==result)return;$('games-count').textContent=`${data.games.length} последних записей`;
+let gamesBusy=false,gamesAgain=false;
+async function loadGames(force=false){if(selectionPending)return;if(!application.selected){$('games-list').innerHTML='<tr><td colspan="6" class="table-empty">Нет выбранного эксперимента</td></tr>';$('games-count').textContent='—';return}if(gamesBusy){if(force)gamesAgain=true;return}const run=application.selected;
+  const kind=$('game-kind').value,result=$('game-result').value,key=[run,kind,result].join('|');if(!force&&gamesKey===key&&!REL.due(gamesAt,Date.now(),5000))return;gamesBusy=true;gamesKey=key;
+  try{const data=await api('/api/games?'+new URLSearchParams({run,kind,result,limit:'50'}));if(application.selected!==run||application.screen!=='games'||$('game-kind').value!==kind||$('game-result').value!==result)return;gamesAt=Date.now();$('games-count').textContent=`${data.games.length} последних записей`;
   $('games-list').innerHTML=data.games.length?data.games.map(g=>`<tr><td>#${g.game_id}</td><td>${g.iteration}</td><td><span class="result-pill ${classResult(g.result)}">${esc(resultNames[g.result]||g.result)}</span></td><td>${esc(reasonNames[g.reason]||g.reason)}</td><td>${fmt(g.plies)}</td><td><button class="table-button view-game" data-id="${g.game_id}" data-kind="${kind}">Открыть →</button></td></tr>`).join(''):'<tr><td colspan="6" class="table-empty">Записей с таким результатом пока нет</td></tr>';}
-  catch(e){toast(e.message)}finally{gamesBusy=false}
+  catch(e){if(application.selected===run&&application.screen==='games'){$('games-count').textContent='Данные устарели · '+e.message;gamesAt=Date.now()}}finally{gamesBusy=false;if(gamesAgain){gamesAgain=false;queueMicrotask(()=>loadGames(true))}}
 }
-async function refresh(){if(application.inFlight)return;application.inFlight=true;try{
-  const requestedRun=application.selected;const runParam=application.selected?'?run='+encodeURIComponent(application.selected):'';
-  const [d,h]=await Promise.all([api('/api/overview'+runParam),api('/api/health')]);
-  if(application.selected!==requestedRun)return;
-  $('engine-led').className='led '+(h.engine_ready?'ok':'bad');$('engine-text').textContent=h.engine_ready?'Chess Core доступен':'C++ ядро не собрано';
-  // If a run was deleted externally, recover to most recent.
-  if(!d.selected && application.selected) application.selected=null;
-  renderOverview(d);$('stop-btn').disabled=false;$('resume-btn').disabled=false;const updated=new Date().toLocaleTimeString('ru-RU');$('sync-label').title+='\nОбновлено: '+updated;$('footer-sync').textContent=(d.file_warnings?.length?'Кэш · ':'Локальные данные · ')+'обновлено '+updated;
-}catch(e){$('sync-label').textContent='Нет связи · данные устарели';$('sync-label').parentElement.classList.add('disconnected');$('sync-label').parentElement.classList.remove('pending');$('footer-sync').textContent='Нет связи · показаны последние доступные данные';$('open-config').disabled=true;$('runs-new').disabled=true;$('stop-btn').disabled=true;$('resume-btn').disabled=true;}finally{application.inFlight=false}}
+async function refresh(force=false){
+ if(application.inFlight){refreshAgain=true;return}
+ application.inFlight=true;const requested=application.selected,token=generation.next(),valid=()=>generation.current(token)&&application.selected===requested;
+ try{
+  let data;try{data=await api('/api/overview'+(requested?'?run='+encodeURIComponent(requested):''))}catch(e){if(e.status!==404||!requested||!valid())throw e;data=await api('/api/overview')}
+  if(!valid())return;
+  if(force||!healthSnapshot||REL.due(healthAt,Date.now(),30000)){try{const health=await api('/api/health');if(!valid())return;healthSnapshot=health;healthAt=Date.now()}catch(e){if(!valid())return;healthSnapshot=null;healthAt=null}}
+  if(!valid())return;
+  if(data.selected!==application.overview?.selected)researchAt=gamesAt=null;
+  connected=true;failures=0;selectionPending=false;if(!data.process?.active||data.process.run!==stopSentRun)stopSentRun=null;
+  $('engine-led').className='led '+(healthSnapshot?.engine_ready?'ok':'bad');$('engine-text').textContent=healthSnapshot?(healthSnapshot.engine_ready?'Chess Core доступен':'C++ ядро не собрано'):'Статус ядра неизвестен';
+  renderOverview(data);updateActionState();
+  const updated=new Date().toLocaleTimeString('ru-RU');$('sync-label').title+='\nОбновлено: '+updated;$('footer-sync').textContent=(data.file_warnings?.length?'Кэш · ':'Локальные данные · ')+'обновлено '+updated;
+ }catch(e){if(!valid())return;connected=false;failures++;$('sync-label').textContent='Нет связи · данные устарели';$('sync-label').parentElement.classList.add('disconnected');$('sync-label').parentElement.classList.remove('pending');$('footer-sync').textContent='Нет связи · '+e.message+' · повтор через '+REL.delay(failures,false,false,false)/1000+' сек.';updateActionState()}
+ finally{application.inFlight=false;if(refreshAgain){refreshAgain=false;queueMicrotask(()=>refresh())}}
+}
 function configModal(open,force=false){const el=$('config-overlay');if(open){if(el.open||$('open-config').disabled||application.overview?.process?.active)return;application.overlayOpen=true;el.classList.remove('hidden');el.showModal();$('c-iterations').focus();updateConfigSummary()}else if(el.open&&(force||!$('start-training').disabled)){persistDraft();el.close()}}
 const presets={quick:{iterations:2,games:2,parallel:2,plies:140,temp:1.1,arena:0,opening:0},balanced:{iterations:10,games:8,parallel:4,plies:240,temp:1.1,arena:2,opening:6},long:{iterations:100,games:16,parallel:8,plies:300,temp:1.1,arena:4,opening:6}};
 function applyPreset(name){const p=presets[name];if(!p)return;qsa('[data-preset]').forEach(b=>b.classList.toggle('chosen',b.dataset.preset===name));for(const k of Object.keys(p))$('c-'+k).value=p[k];persistDraft();updateConfigSummary()}
 async function startTraining(){const payload={iterations:+$('c-iterations').value,games_per_iteration:+$('c-games').value,parallel:+$('c-parallel').value,max_plies:+$('c-plies').value,temperature:+$('c-temp').value,arena_games:+$('c-arena').value,opening_plies:+$('c-opening').value,league_fraction:+$('c-league').value/100, repetition_penalty:+$('c-repeat').value, target_kl:+$('c-kl').value,bridge_workers:+$('c-workers').value,batch_size:+$('c-batch').value,archive_every:+$('c-archive').value};
-  const btn=$('start-training');if(btn.disabled||application.overview?.process?.active||$('sync-label').parentElement.classList.contains('disconnected'))return;const invalid=qsa('#config-overlay input').find(el=>!el.checkValidity());if(invalid){invalid.closest('details')?.setAttribute('open','');invalid.reportValidity();return}const issues=UX.validateTraining(payload);if(issues.length){const [id,msg]=issues[0];$(id).closest('details')?.setAttribute('open','');$(id).focus();$('config-error').textContent=msg;return}btn.disabled=true;btn.setAttribute('aria-busy','true');$('config-error').textContent='';try{const d=await api('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});application.selected=d.run;configModal(false,true);navigate('overview');await refresh();toast('Эксперимент запущен: '+d.run)}catch(e){$('config-error').textContent=e.message}finally{btn.disabled=false;btn.removeAttribute('aria-busy')}}
-async function stopTraining(){if(!application.overview?.process?.active||$('stop-btn').disabled)return;if(!await askConfirm('Остановить обучение после окончания текущей итерации? Результаты сохранятся.'))return;if(!application.overview?.process?.active||application.overview.process.run!==application.selected)return;$('stop-btn').disabled=true;try{await api('/api/stop',{method:'POST'});toast('Запрос остановки принят. Текущая итерация завершится.')}catch(e){toast(e.message)}finally{$('stop-btn').disabled=false}}
+  const btn=$('start-training');if(btn.disabled||!canMutate()||application.overview?.process?.active)return;const invalid=qsa('#config-overlay input').find(el=>!el.checkValidity());if(invalid){invalid.closest('details')?.setAttribute('open','');invalid.reportValidity();return}const issues=UX.validateTraining(payload);if(issues.length){const [id,msg]=issues[0];$(id).closest('details')?.setAttribute('open','');$(id).focus();$('config-error').textContent=msg;return}btn.disabled=true;btn.setAttribute('aria-busy','true');$('config-error').textContent='';try{const d=await api('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});application.selected=d.run;configModal(false,true);navigate('overview');await refresh();toast('Эксперимент запущен: '+d.run)}catch(e){$('config-error').textContent=e.message}finally{btn.disabled=false;btn.removeAttribute('aria-busy')}}
+async function stopTraining(){const run=application.selected;if(!canMutate()||!application.overview?.process?.active||$('stop-btn').disabled)return;if(!await askConfirm('Остановить обучение после окончания текущей итерации? Результаты сохранятся.'))return;if(!canMutate()||run!==application.selected||application.overview.process.run!==run||stopPending)return;stopPending=true;updateActionState();try{await api('/api/stop?run='+encodeURIComponent(run),{method:'POST'});stopSentRun=run;toast('Запрос остановки принят. Текущая итерация завершится.')}catch(e){toast(e.message)}finally{stopPending=false;updateActionState();refresh()}}
 let resumeRun=null;
 function resumeTraining(){
   if(!application.selected||application.overview?.process?.active||$('resume-btn').disabled)return;
@@ -275,7 +297,7 @@ function resumeTraining(){
 }
 async function submitResume(e){
   e.preventDefault();const btn=$('resume-submit');if(btn.disabled||!resumeRun)return;
-  if(resumeRun!==application.selected||application.overview?.process?.active){$('resume-error').textContent='Состояние изменилось. Закройте окно и обновите эксперимент.';return}
+  if(!canMutate()||resumeRun!==application.selected||application.overview?.process?.active){$('resume-error').textContent='Состояние изменилось. Закройте окно и обновите эксперимент.';return}
   const payload={iterations:+$('resume-iterations').value,max_plies:+$('resume-plies').value,opening_plies:+$('resume-openings').value,parallel:+$('resume-parallel').value,bridge_workers:+$('resume-workers').value,archive_every:5};
   btn.disabled=true;
   try{await api('/api/resume/'+encodeURIComponent(resumeRun),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});$('resume-dialog').close();await refresh();toast('Обучение продолжено')}catch(error){$('resume-error').textContent=error.message}finally{btn.disabled=false}
@@ -331,10 +353,10 @@ document.addEventListener('click',e=>{const nav=e.target.closest('[data-screen]'
   const preset=e.target.closest('[data-preset]');if(preset){applyPreset(preset.dataset.preset);return}
   const replay=e.target.closest('.view-game');if(replay){showReplay(+replay.dataset.id,replay.dataset.kind);return}
   const tab=e.target.closest('[data-metric]');if(tab){application.metric=tab.dataset.metric;qsa('[data-metric]').forEach(b=>b.classList.toggle('on',b===tab));if(application.overview)renderOverview(application.overview);return}
-  const run=e.target.closest('[data-run]');if(run){application.selected=run.dataset.run;navigate('overview');refresh();return}
+  const run=e.target.closest('[data-run]');if(run){selectRun(run.dataset.run);navigate('overview');return}
   const move=e.target.closest('.move-list button[data-step]');if(move){pauseReplay();replayPosition(+move.dataset.step);return}});
 async function startEvaluation(){
-  if($('start-evaluation').disabled)return;
+  if($('start-evaluation').disabled||!canMutate())return;
   if(!application.selected){toast('Выберите эксперимент');return}
   const payload={games:+$('eval-games').value,max_plies:+$('eval-plies').value,
        opening_plies:+$('eval-openings').value,opponent:$('eval-opponent').value,suite:$('eval-suite').value};
@@ -345,7 +367,7 @@ async function startEvaluation(){
   catch(e){toast('Evaluation: '+e.message)}finally{$('start-evaluation').disabled=false;$('start-tournament').disabled=false}
 }
 async function startTournament(){
-  if($('start-tournament').disabled)return;
+  if($('start-tournament').disabled||!canMutate())return;
   if(!application.selected){toast('Выберите эксперимент');return}
   $('start-evaluation').disabled=true;$('start-tournament').disabled=true;
   try{const result=await api('/api/tournament/'+encodeURIComponent(application.selected),
@@ -356,16 +378,16 @@ async function startTournament(){
 }
 $('start-tournament').onclick=startTournament;
 $('start-evaluation').onclick=startEvaluation;
-$('analysis-reload').onclick=loadAnalysis;
+$('analysis-reload').onclick=()=>loadAnalysis(true);
 $('open-config').onclick=()=>configModal(true);$('runs-new').onclick=()=>configModal(true);$('close-config').onclick=()=>configModal(false);$('cancel-config').onclick=()=>configModal(false);
-$('start-training').onclick=startTraining;$('stop-btn').onclick=stopTraining;$('resume-btn').onclick=resumeTraining;$('reload').onclick=refresh;
+$('start-training').onclick=startTraining;$('stop-btn').onclick=stopTraining;$('resume-btn').onclick=resumeTraining;$('reload').onclick=()=>poll(true);
 $('export-csv').onclick=()=>{if(!application.selected){toast('Сначала выберите эксперимент');return}window.location.href='/api/export/metrics.csv?run='+encodeURIComponent(application.selected)};
 $('close-game').onclick=closeReplay;$('config-overlay').onclick=e=>{if(e.target===$('config-overlay'))configModal(false)};$('game-overlay').onclick=e=>{if(e.target===$('game-overlay'))closeReplay()};
-$('run-picker').onchange=e=>{application.selected=e.target.value||null;refresh()};$('game-kind').onchange=loadGames;$('game-result').onchange=loadGames;
+$('run-picker').onchange=e=>selectRun(e.target.value||null);$('game-kind').onchange=()=>loadGames(true);$('game-result').onchange=()=>loadGames(true);
 $('replay-range').oninput=e=>{pauseReplay();replayPosition(+e.target.value)};
 for(const [id,step] of [['replay-first',()=>0],['replay-last',()=>application.replay?.moves.length||0],['replay-next',()=>application.replayStep+1],['replay-prev',()=>application.replayStep-1]])$(id).onclick=()=>{pauseReplay();replayPosition(step())};
 $('replay-board').onkeydown=e=>{if(['ArrowRight','ArrowLeft','Home','End'].includes(e.key)){e.preventDefault();pauseReplay();replayPosition(e.key==='Home'?0:e.key==='End'?application.replay.moves.length:application.replayStep+(e.key==='ArrowRight'?1:-1))}};
-async function poll(){try{if(!document.hidden&&!application.overlayOpen&&!application.replay&&!$('command-dialog').open&&!$('resume-dialog').open&&!$('confirm-dialog').open){await refresh();if(application.screen==='games')await loadGames();if(researchScreens.has(application.screen))await loadAnalysis()}}finally{setTimeout(poll,2500)}}
+async function poll(force=false){if(pollRunning)return;pollRunning=true;clearTimeout(pollTimer);try{if(!document.hidden){await refresh(force);if(connected&&!selectionPending&&!modalActive()){if(application.screen==='games')await loadGames(force);if(researchScreens.has(application.screen))await loadAnalysis(force)}}}finally{pollRunning=false;pollTimer=setTimeout(()=>poll(),REL.delay(failures,!!application.overview?.process?.active,document.hidden,modalActive()))}}
 
 $('compact-storage').onclick=async()=>{if(!application.selected){toast('Выберите эксперимент');return}if(!await askConfirm('Обучение остановлено? Сжать журналы эксперимента без потери истории?'))return;try{const d=await api('/api/storage/'+encodeURIComponent(application.selected)+'/compact',{method:'POST'});toast('Безопасное сжатие выполнено: '+num(d.result.saved_bytes/1048576,1)+' МБ освобождено');await loadAnalysis()}catch(e){toast('Сжатие: '+e.message)}};
 
@@ -374,7 +396,7 @@ async function loadAgentLab(run){
   const area=$('agent-results'),health=$('agent-training-health');if(!area||!health)return;
   try{
     const data=await api('/api/agents/'+encodeURIComponent(run));
-    if(application.selected!==run)return;const status=data.process||{};
+    if(application.selected!==run||application.screen!=='agents')return;const status=data.process||{};
     let text=['aggressive','defender','phantom'].map(name=>{
       const report=data.reports?.[name]||{}, file=name+'.pt';
       return `<div class="diagnostic-item"><strong>${name==='aggressive'?'Aggressive':name==='defender'?'Defender':'Фантом-X23'} · ${data.models?.[file]?'Checkpoint создан':'Пока не обучен'}</strong><p>${esc(report.status||'Нет отчёта')} · примеров ${fmt(report.positions||0)} · holdout ${num(report.best?.loss??report.best?.nll,4)}${report.best?' · '+(name==='phantom'?'book top1 ':'teacher top1 ')+num(100*(report.best.teacher_top1??report.best.policy_top1??0),1)+'%':''}</p></div>`;
@@ -383,7 +405,7 @@ async function loadAgentLab(run){
     area.innerHTML=text;
     const h=data.health||{};
     health.innerHTML=`<div class="diagnostic-item"><strong>Контроль PPO · ${fmt(h.iterations)} последних итераций</strong><p>Ничьи: ${h.draw_share!=null?num(100*h.draw_share,1)+'%':'—'} · Остановки по KL: ${h.kl_early_stop_share!=null?num(100*h.kl_early_stop_share,1)+'%':'—'} · arena: ${h.arena_score_mean!=null?num(100*h.arena_score_mean,1)+'%':'—'}</p>${(h.warnings||[]).map(w=>'<p>⚠ '+esc(w)+'</p>').join('')}</div>`;
-  }catch(error){area.textContent='Agent Lab: '+error.message}
+  }catch(error){if(application.selected===run&&application.screen==='agents')area.textContent='Agent Lab: '+error.message}
 }
 
 async function trainSpecialist(profile){
@@ -457,7 +479,7 @@ $('game-overlay').addEventListener('close',()=>{if($('game-overlay').open)return
 $('replay-flip').onclick=()=>{replayFlipped=!replayFlipped;savePrefs({flipped:replayFlipped});replayPosition(application.replayStep)};
 $('copy-uci').onclick=()=>{if(application.replay)copyText(application.replay.moves.join(' '))};
 $('replay-play').onclick=playReplay;
-document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseReplay()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseReplay();else poll(true)});
 const savedUX=readPrefs();if(savedUX.draft&&typeof savedUX.draft==='object'){for(const el of qsa('#config-overlay input[id]')){const value=savedUX.draft[el.id];if(typeof value==='string'){el.value=value;if(!el.checkValidity())el.value=el.defaultValue}}qsa('[data-preset]').forEach(b=>b.classList.remove('chosen'))}
 if(['value','policy','entropy'].includes(savedUX.metric)){application.metric=savedUX.metric;qsa('[data-metric]').forEach(b=>b.classList.toggle('on',b.dataset.metric===application.metric))}
 if(['all','25','100','250'].includes(savedUX.range))$('chart-range').value=savedUX.range;
