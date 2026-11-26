@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import ctypes
 import json
-import queue
 import sys
 import threading
 from pathlib import Path
@@ -18,7 +17,8 @@ from .ui_layout import shortcut_edge
 from .autoplay import Screen,VisionAutoplay
 from .focus import find_browser,activate_browser
 from neural.agent_profiles import ALIASES
-from .telemetry import read_event, formatted_analysis, rotate_and_append, rectangles_overlap
+from .telemetry import rotate_and_append, rectangles_overlap
+from .ui_controller import VisionUiController
 
 ROOT=Path(__file__).resolve().parents[1]
 RUN_ID='run_20261123_072154_6a110b'
@@ -32,7 +32,7 @@ class App(Workspace):
         self.path=ROOT/'config'/'vision_bot.json'
         self.rect=None
         self.ev=threading.Event();self.worker=None;self.bot=None;self.agent_pending_on_start=None
-        self.msg=queue.Queue()
+        self.ui_controller=VisionUiController()
         self.color=tk.StringVar(value='white');self.checkpoint=tk.StringVar(value='latest.pt')
         self.consent=tk.BooleanVar(value=False)
         self.external_profile=tk.StringVar(value='balanced')
@@ -90,35 +90,27 @@ class App(Workspace):
 
     def logline(self,t):
         # Queue is thread-safe; Tk operations happen only on the main thread.
-        self.msg.put(t)
+        self.ui_controller.submit(t)
 
     def pump(self):
-        import datetime
-        import time
-        deadline=time.monotonic()+.008
-        for _ in range(24):
-            if time.monotonic()>deadline:break
-            try: raw=self.msg.get_nowait()
-            except queue.Empty: break
-            try: event=read_event(raw)
-            except (ValueError,TypeError): event=None
-            if event is not None:
+        # This is the Tk adapter; the controller has no toolkit dependency.
+        try:
+            for event in self.ui_controller.drain():
                 try:
-                    lines=formatted_analysis(event)
-                    self.render_analysis(event,lines)
-                    rotate_and_append(self.log_file,event.get('when','')+' [ANALYSIS] '+' | '.join(lines))
-                    self.add_view_log('analysis', ' | '.join(lines[:2]))
-                except (OSError,ValueError,TypeError,KeyError) as exc:
-                    self.add_view_log('error',str(exc))
-                continue
-            t=str(raw)
-            tag='error' if any(x in t.upper() for x in ('ОСТАНОВКА','ОШИБКА','ВНИМАНИЕ')) else ('move' if ('Ход ' in t or 'подтверждён' in t) else 'info')
-            self.add_view_log(tag,t)
-            self.observe_message(t,tag)
-            try:rotate_and_append(self.log_file,f'[{datetime.datetime.now():%H:%M:%S}] {t}')
-            except OSError:pass
-        self.refresh_workspace()
-        self.root.after(100,self.pump)
+                    if event.analysis is not None:
+                        self.render_analysis(event.analysis,event.lines)
+                    self.add_view_log(event.category,event.text)
+                    if event.analysis is None:
+                        self.observe_message(event.text,event.category)
+                except (ValueError,TypeError,KeyError,AttributeError) as exc:
+                    self.add_view_log('error','UI event: '+str(exc))
+                try:
+                    rotate_and_append(self.log_file,event.disk_line)
+                except OSError:
+                    pass
+            self.refresh_workspace()
+        finally:
+            if not self._closing:self.root.after(100,self.pump)
 
     def place_away_from_board(self):
         """Try docking to the side so the panel doesn't conceal a chess square."""
