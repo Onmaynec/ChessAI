@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -7,36 +8,112 @@ ApplicationWindow {
     objectName: "visionWorkspace"
     width: 1200
     height: 800
-    minimumWidth: 560
-    minimumHeight: 480
+    minimumWidth: mode === 'compact' ? 320 : 560
+    minimumHeight: mode === 'compact' ? 260 : 480
     visible: true
+    flags: Qt.Window | (pinned ? Qt.WindowStaysOnTopHint : 0)
     title: "Vision Bot · " + appVersion + " · Preview"
     color: theme.bg
     font.family: theme.font
     font.pixelSize: 13
     property int page: 0
+    property string mode: "standard"
+    property bool pinned: false
+    property bool initialized: false
     readonly property bool wide: width >= 1000
+    readonly property bool compactMode: mode === "compact"
     readonly property var pages: ["Обзор", "Анализ", "Журнал", "Настройки"]
-    property string query: ""
-    property string category: "all"
 
-    Shortcut { sequence: "Ctrl+1"; onActivated: root.page = 0 }
-    Shortcut { sequence: "Ctrl+2"; onActivated: root.page = 1 }
-    Shortcut { sequence: "Ctrl+3"; onActivated: root.page = 2 }
-    Shortcut { sequence: "Ctrl+4"; onActivated: root.page = 3 }
+
+    function remember() {
+        if (initialized && visibility === Window.Windowed)
+            workspaceModel.record(mode, x, y, width, height)
+    }
+    function applyGeometry(key) {
+        var g = workspaceModel.geometry(key)
+        if (g.length === 4) {
+            x = g[0]; y = g[1]; width = g[2]; height = g[3]
+        }
+    }
+    function switchMode(next) {
+        if (next === mode || ["compact","standard","expanded"].indexOf(next) < 0) return
+        geometryTimer.stop()
+        remember()
+        initialized = false
+        if (visibility !== Window.Windowed) showNormal()
+        mode = next
+        applyGeometry(mode)
+        workspaceModel.setMode(mode)
+        initialized = true
+    }
+    function openOverlay(key) {
+        if (key === "metrics") metricsOverlay.openPanel()
+        else if (key === "board") boardOverlay.openPanel()
+        else if (key === "analysis") analysisOverlay.openPanel()
+        else if (key === "journal") journalOverlay.openPanel()
+    }
+    Component.onCompleted: {
+        mode = workspaceModel.initialMode()
+        pinned = workspaceModel.pinned("main")
+        applyGeometry(mode)
+        initialized = true
+    }
+    onClosing: function(close) {
+        geometryTimer.stop()
+        remember()
+        metricsOverlay.close()
+        boardOverlay.close()
+        analysisOverlay.close()
+        journalOverlay.close()
+    }
+    Timer {
+        id: geometryTimer
+        interval: 400
+        repeat: false
+        onTriggered: root.remember()
+    }
+    onXChanged: if (initialized) geometryTimer.restart()
+    onYChanged: if (initialized) geometryTimer.restart()
+    onWidthChanged: if (initialized) geometryTimer.restart()
+    onHeightChanged: if (initialized) geometryTimer.restart()
+    OverlayWindow { id: metricsOverlay; panelKey: "metrics"; panelTitle: "Метрики" }
+    OverlayWindow { id: boardOverlay; panelKey: "board"; panelTitle: "Доска" }
+    OverlayWindow { id: analysisOverlay; panelKey: "analysis"; panelTitle: "Варианты" }
+    OverlayWindow { id: journalOverlay; panelKey: "journal"; panelTitle: "Журнал" }
+    Shortcut { sequence: "Ctrl+Shift+M"; onActivated: root.switchMode(root.compactMode ? "standard" : "compact") }
+    Shortcut { sequence: "Ctrl+1"; enabled: !root.compactMode; onActivated: root.page = 0 }
+    Shortcut { sequence: "Ctrl+2"; enabled: !root.compactMode; onActivated: root.page = 1 }
+    Shortcut { sequence: "Ctrl+3"; enabled: !root.compactMode; onActivated: root.page = 2 }
+    Shortcut { sequence: "Ctrl+4"; enabled: !root.compactMode; onActivated: root.page = 3 }
 
     header: Rectangle {
         color: theme.bg
-        implicitHeight: 64
+        implicitHeight: root.compactMode ? 48 : 64
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 20
             anchors.rightMargin: 20
             spacing: 12
             Label { text: "VISION BOT"; font.weight: Font.Bold; font.pixelSize: 18; color: theme.text }
-            Label { text: appVersion; color: theme.muted; font.pixelSize: 12 }
+            Label { text: appVersion; visible: !root.compactMode; color: theme.muted; font.pixelSize: 12 }
             Item { Layout.fillWidth: true }
+            ComboBox {
+                id: modePicker
+                model: ["Compact", "Standard", "Expanded"]
+                property var keys: ["compact","standard","expanded"]
+                currentIndex: Math.max(0,keys.indexOf(root.mode))
+                onActivated: root.switchMode(keys[currentIndex])
+                Layout.preferredWidth: 114
+                palette.button: theme.field
+                palette.buttonText: theme.text
+                palette.base: theme.panel
+                palette.text: theme.text
+                palette.highlight: theme.active
+                palette.highlightedText: theme.text
+                Accessible.name: "Режим рабочего пространства"
+            }
             Label {
+                visible: !root.compactMode
                 text: sourceLabel
                 color: theme.warning
                 font.pixelSize: 11
@@ -48,7 +125,7 @@ ApplicationWindow {
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.border }
     }
     footer: Rectangle {
-        implicitHeight: 34
+        implicitHeight: root.compactMode ? 26 : 34
         color: theme.bg
         RowLayout {
             anchors.fill: parent
@@ -62,6 +139,7 @@ ApplicationWindow {
 
     RowLayout {
         anchors.fill: parent
+        visible: !root.compactMode
         spacing: 0
         Rectangle {
             color: theme.panel
@@ -132,7 +210,14 @@ ApplicationWindow {
                         Metric { label: "Оценка"; value: visionModel.boardView.score; detail: "Сообщено источником"; Layout.fillWidth: true }
                         Metric { label: "Глубина"; value: visionModel.boardView.depth; detail: "Полуходы"; Layout.fillWidth: true }
                     }
-                    PositionPanel { Layout.fillWidth: true }
+                    GridLayout {
+                        columns: root.mode === "expanded" && root.wide ? 2 : 1
+                        Layout.fillWidth: true
+                        columnSpacing: 12
+                        rowSpacing: 12
+                        PositionPanel { Layout.fillWidth: true; Layout.preferredWidth: 500; Layout.alignment: Qt.AlignTop }
+                        VariationPanel { visible: root.mode === "expanded"; Layout.fillWidth: true; Layout.preferredWidth: 260; Layout.alignment: Qt.AlignTop }
+                    }
                     UiButton { text: "Подробный анализ"; onClicked: root.page = 1; Layout.alignment: Qt.AlignLeft }
                     Item { Layout.preferredHeight: 20 }
                 }
@@ -188,73 +273,7 @@ ApplicationWindow {
             }
 
             Item {
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 12
-                    SectionTitle { heading: "Журнал событий"; description: "История локального источника · до 600 записей."; Layout.fillWidth: true }
-                    TextField {
-                        id: search
-                        objectName: "journalSearch"
-                        Layout.fillWidth: true
-                        placeholderText: "Поиск по событиям"
-                        text: root.query
-                        color: theme.text
-                        placeholderTextColor: theme.dim
-                        selectByMouse: true
-                        onTextEdited: { root.query = text; visionModel.filterJournal(root.query, root.category) }
-                        background: Rectangle { radius: theme.radius; color: theme.field; border.color: search.activeFocus ? theme.accent : theme.border }
-                    }
-                    Flow {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: implicitHeight
-                        spacing: 6
-                        Repeater {
-                            model: [{key:"all", name:"Все"}, {key:"analysis", name:"Анализ"}, {key:"move", name:"Ходы"}, {key:"error", name:"Ошибки"}]
-                            delegate: UiButton {
-                                required property var modelData
-                                text: modelData.name
-                                implicitWidth: 84
-                                selected: root.category === modelData.key
-                                onClicked: { root.category = modelData.key; visionModel.filterJournal(root.query, root.category) }
-                            }
-                        }
-                    }
-                    Label { text: visionModel.journal.length + " / " + visionModel.journalTotal + " событий"; color: theme.muted; Layout.fillWidth: true }
-                    Rectangle {
-                        color: theme.panel
-                        border.color: theme.border
-                        radius: theme.radius
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        ListView {
-                            id: journalList
-                            objectName: "journalList"
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            clip: true
-                            model: visionModel.journal
-                            spacing: 1
-                            ScrollBar.vertical: ScrollBar {}
-                            delegate: Rectangle {
-                                required property var modelData
-                                width: journalList.width - 12
-                                height: eventRow.implicitHeight + 20
-                                color: theme.field
-                                RowLayout {
-                                    id: eventRow
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.top: parent.top
-                                    anchors.margins: 10
-                                    Label { text: modelData.category.toUpperCase(); color: modelData.category === "error" ? theme.red : theme.muted; font.pixelSize: 10; Layout.preferredWidth: 65 }
-                                    Label { text: modelData.text; textFormat: Text.PlainText; color: theme.text; wrapMode: Text.WrapAnywhere; Layout.fillWidth: true }
-                                }
-                            }
-                            Label { anchors.centerIn: parent; visible: journalList.count === 0; text: "Нет событий"; color: theme.muted }
-                        }
-                    }
-                }
+                JournalPanel { anchors.fill: parent; anchors.margins: 20 }
             }
 
             ScrollView {
@@ -273,8 +292,26 @@ ApplicationWindow {
                             spacing: 12
                             Label { text: "Оформление"; color: theme.text; font.pixelSize: 17; font.weight: Font.DemiBold }
                             Label { text: "Monochrome · #000000"; color: theme.muted }
-                            CheckBox { id: top; text: "Поверх окон (только preview)"; palette.windowText: theme.text; onToggled: root.flags = checked ? root.flags | Qt.WindowStaysOnTopHint : root.flags & ~Qt.WindowStaysOnTopHint }
-                            Label { text: "Ctrl+1–4 — переключение разделов"; color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                            CheckBox { id: top; text: "Поверх окон (только preview)"; checked: root.pinned; palette.windowText: theme.text; onToggled: { root.pinned = checked; workspaceModel.setPinned("main",checked) } }
+                            Label { text: "Ctrl+1–4 — разделы · Ctrl+Shift+M — компактный режим"; color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                            Label { text: workspaceModel.error; visible: text.length > 0; textFormat: Text.PlainText; color: theme.red; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                        }
+                    }
+                    Surface {
+                        Layout.fillWidth: true
+                        contentItem: ColumnLayout {
+                            spacing: 8
+                            Label { text: "Независимые панели"; color: theme.text; font.pixelSize: 17 }
+                            Repeater {
+                                model: [{key:"metrics",name:"Метрики"},{key:"board",name:"Доска"},{key:"analysis",name:"Варианты"},{key:"journal",name:"Журнал"}]
+                                delegate: UiButton {
+                                    required property var modelData
+                                    text: "Открыть · " + modelData.name
+                                    Layout.fillWidth: true
+                                    onClicked: root.openOverlay(modelData.key)
+                                }
+                            }
+                            Label { text: "Размер и положение сохраняются отдельно для каждой панели."; color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
                         }
                     }
                     Surface {
@@ -288,4 +325,24 @@ ApplicationWindow {
             }
         }
     }
+    ScrollView {
+        id: compactScroll
+        anchors.fill: parent
+        visible: root.compactMode
+        clip: true
+        contentWidth: availableWidth
+        ColumnLayout {
+            width: compactScroll.availableWidth - 20
+            x: 10; y: 8
+            spacing: 8
+            CompactPanel { Layout.fillWidth: true }
+            RowLayout {
+                Layout.fillWidth: true
+                UiButton { text: "Доска"; Layout.fillWidth: true; implicitWidth: 70; onClicked: root.openOverlay("board") }
+                UiButton { text: "Журнал"; Layout.fillWidth: true; implicitWidth: 70; onClicked: root.openOverlay("journal") }
+                UiButton { text: root.pinned ? "Открепить" : "Закрепить"; Layout.fillWidth: true; implicitWidth: 90; onClicked: { root.pinned = !root.pinned; workspaceModel.setPinned("main",root.pinned) } }
+            }
+        }
+    }
+
 }
