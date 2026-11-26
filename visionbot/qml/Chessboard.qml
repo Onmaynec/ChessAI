@@ -4,6 +4,7 @@ import QtQuick.Controls
 Item {
     id: board
     property var position: ({cells: [], arrow: {}})
+    property var cells: []
     property bool black: false
     readonly property real edge: Math.max(1, Math.min(width - 22, height - 22))
     readonly property real squareSize: edge / 8
@@ -21,7 +22,7 @@ Item {
             model: 64
             delegate: Rectangle {
                 required property int index
-                readonly property var cell: board.position.cells[index] || ({piece:"",square:""})
+                readonly property var cell: board.cells[index] || ({piece:"",square:""})
                 x: (index % 8) * board.squareSize
                 y: Math.floor(index / 8) * board.squareSize
                 width: board.squareSize
@@ -41,7 +42,9 @@ Item {
                     anchors.centerIn: parent
                     width: parent.width * 0.88
                     height: width
-                    sourceSize.width: Math.ceil(width * 2)
+                    // Quantized raster size avoids SVG re-rasterization on every resize pixel.
+                    sourceSize.width: Math.max(64, Math.min(256, Math.ceil(width * 2 / 32) * 32))
+                    cache: true
                     sourceSize.height: sourceSize.width
                     source: cell.piece ? "pieces/" + (cell.piece === cell.piece.toUpperCase() ? "w" : "b") + cell.piece.toLowerCase() + ".svg" : ""
                     fillMode: Image.PreserveAspectFit
@@ -82,7 +85,7 @@ Item {
         }
         Rectangle {
             anchors.fill: parent
-            visible: board.position.cells.length !== 64
+            visible: board.cells.length !== 64
             color: theme.panel
             opacity: .94
             Label { anchors.centerIn: parent; text: "Нет корректной позиции"; color: theme.muted }
@@ -96,7 +99,7 @@ Item {
             y: (index+.5)*board.squareSize-height/2
             text: board.black ? index+1 : 8-index
             color: theme.muted
-            font.pixelSize: 10
+            font.pixelSize: Math.round(10 * workspaceModel.textScale / 100)
         }
     }
     Repeater {
@@ -107,7 +110,7 @@ Item {
             y: board.edge+3
             text: (board.black ? "hgfedcba" : "abcdefgh")[index]
             color: theme.muted
-            font.pixelSize: 10
+            font.pixelSize: Math.round(10 * workspaceModel.textScale / 100)
         }
     }
 }
