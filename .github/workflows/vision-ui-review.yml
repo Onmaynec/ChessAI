@@ -8,6 +8,9 @@ on:
       - 'tools/vision_ui_capture.py'
       - 'tests/test_vision_ui_design.py'
       - 'tests/test_vision_presentation_rules.py'
+      - 'tests/test_vision_ui_controller.py'
+      - 'tests/test_vision_qt_viewmodel.py'
+      - 'requirements-vision-qt.txt'
       - '.github/workflows/vision-ui-review.yml'
   workflow_dispatch:
 permissions:
@@ -21,8 +24,20 @@ jobs:
         with:
           python-version: '3.13'
       - name: Syntax check
-        run: python -m compileall -q visionbot tools/vision_ui_capture.py tests/test_vision_ui_design.py tests/test_vision_presentation_rules.py
+        run: python -m compileall -q visionbot tools/vision_ui_capture.py tests/test_vision_ui_design.py tests/test_vision_presentation_rules.py tests/test_vision_ui_controller.py tests/test_vision_qt_viewmodel.py
       - name: Pure presentation tests
         run: |
           python -m unittest discover -s tests -p test_vision_ui_design.py -v
           python -m unittest discover -s tests -p test_vision_presentation_rules.py -v
+          python -m unittest discover -s tests -p test_vision_ui_controller.py -v
+  qt-bindings:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install optional Qt dependencies
+        run: python -m pip install -r requirements-vision-qt.txt
+      - name: QML property binding smoke test
+        run: python -m unittest discover -s tests -p test_vision_qt_viewmodel.py -v
