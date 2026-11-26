@@ -5,11 +5,13 @@ exposed. Import this module only in an environment with PySide6 installed.
 """
 from PySide6.QtCore import QObject, Property, Signal, Slot
 from .ui_controller import VisionUiController
+from .board_projection import BoardHistory
 
 class VisionViewModel(QObject):
     sessionChanged = Signal()
     analysisChanged = Signal()
     journalChanged = Signal()
+    boardChanged = Signal()
 
     def __init__(self, controller: VisionUiController, parent=None):
         super().__init__(parent)
@@ -18,6 +20,7 @@ class VisionViewModel(QObject):
         self._analysis = controller.analysis
         self._journal = []
         self._visible = []
+        self._board = BoardHistory()
 
     @Property(str, notify=sessionChanged)
     def phase(self):
@@ -67,7 +70,41 @@ class VisionViewModel(QObject):
     def journalTotal(self):
         return len(self._journal)
 
+    @Property('QVariantMap', notify=boardChanged)
+    def boardView(self):
+        return self._board.view()
+
+    @Property(int, notify=boardChanged)
+    def historyCount(self):
+        return len(self._board.frames)
+
+    @Property(int, notify=boardChanged)
+    def historyIndex(self):
+        return self._board.index
+
+    @Property(bool, notify=boardChanged)
+    def blackOrientation(self):
+        return self._board.black
+
+    @Slot(int)
+    def goHistory(self, index):
+        self._board.go(index)
+        self.boardChanged.emit()
+
+    @Slot()
+    def flipBoard(self):
+        self._board.black = not self._board.black
+        self.boardChanged.emit()
+
+    @Slot(str)
+    def selectCandidate(self, move):
+        if self._board.select(move):
+            self.boardChanged.emit()
+
     def set_journal(self, events):
+        events = list(events)[-600:]
+        self._board.replace(e.analysis for e in events)
+        self.boardChanged.emit()
         self._journal = [{'category': e.category, 'text': e.text} for e in events][-600:]
         self.filterJournal('', 'all')
 
