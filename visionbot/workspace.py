@@ -11,7 +11,7 @@ import re
 import tkinter as tk
 from collections import deque
 from pathlib import Path
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 
 from .telemetry import rectangles_overlap
 from .ui_layout import ScrollViewport, StableStringVar, layout_mode
@@ -19,17 +19,13 @@ from .ui_icons import icon_image
 from .overlays import OverlayManager,NAMES
 from .analysis_view import report_sections
 from neural.agent_profiles import ALIASES
+from .design import (BG, PANEL, FIELD, BORDER, TEXT, MUTED, DIM, ACCENT,
+                     ACCENT_TEXT, HOVER, SURFACE_HOVER, ACTIVE, TRACK, GREEN, RED,
+                     BOARD_LIGHT, BOARD_DARK, STOP_BG, STOP_HOVER, STOP_BORDER, WARNING,
+                     FONT, MONO, RADIUS, button_style)
+from .log_model import matches, select_entries
+from .presentation_rules import preview_layout, form_columns, session_state, short_text
 
-BG='#101116'
-PANEL='#171820'
-FIELD='#20212b'
-BORDER='#2b2d39'
-TEXT='#f2f2f7'
-MUTED='#a5a9bb'
-ACCENT='#7154e8'
-HOVER='#866cf4'
-GREEN='#52d79a'
-RED='#ff8585'
 GLYPHS=dict(zip('KQRBNPkqrbnp','♔♕♖♗♘♙♚♛♜♝♞♟'))
 
 def parse_board(fen):
@@ -87,6 +83,17 @@ class Workspace:
         self._fen=''
         self._messages=deque(maxlen=600)
         self._filter='all'
+        self.log_query=tk.StringVar(value='')
+        self.log_paused=tk.BooleanVar(value=False)
+        self._paused_messages=()
+        self._log_search_job=None
+        self._visible_entries=deque()
+        self._applied_query=''
+        self._preview_layout_key=None
+        self._form_layout_key=None
+        self._preview_resize_job=None
+        self._form_resize_job=None
+        self._page_scroll={}
         self.filter_var=StableStringVar(value='all')
         self._labels=[]
         self._locked=[]
@@ -97,11 +104,14 @@ class Workspace:
             if not isinstance(settings,dict): settings={}
         except (OSError,ValueError): settings={}
         self.lang=StableStringVar(value='EN' if settings.get('language')=='EN' else 'RU')
-        self.opacity=tk.DoubleVar(value=clamp_alpha(settings.get('opacity',.85)))
+        self.opacity=tk.DoubleVar(value=clamp_alpha(settings.get('opacity',1.0)))
         self.preview=tk.BooleanVar(value=bool(settings.get('preview',True)))
-        self.autoscroll=tk.BooleanVar(value=True)
+        self.autoscroll=tk.BooleanVar(value=bool(settings.get('follow_log',True)))
+        self.topmost.set(bool(settings.get('topmost',self.topmost.get())))
         self.log_collapsed=tk.BooleanVar(value=bool(settings.get('log_collapsed',False)))
         self.state_text=StableStringVar(value=self.tr('Ожидание','Idle'))
+        self.latest_event_text=StableStringVar(value='—')
+        self.log_count=StableStringVar(value='0 / 0')
         self.summary_text=StableStringVar(value='')
         self.board_text=StableStringVar(value='')
         self.fen_text=StableStringVar(value='—')
@@ -120,11 +130,21 @@ class Workspace:
         self.fen_turn=StableStringVar(value='—')
         self._system_signature=None
         self.alpha_text=StableStringVar(value=f'{round(self.opacity.get()*100)}%')
-        r.title('Chess AI · Vision Computer Bot Lab — Vision Studio 0.9.0')
+        r.title('Vision Bot · Chess AI')
+        try: version=(Path(__file__).resolve().parents[1]/'VERSION').read_text(encoding='utf-8').strip()
+        except OSError: version='—'
         r.configure(fg_color=BG)
         scale=self.window_scale()
         sw,sh=round(r.winfo_screenwidth()/scale),round(r.winfo_screenheight()/scale)
-        r.geometry(f'{min(1360,max(420,sw-70))}x{min(850,max(440,sh-90))}')
+        width,height=min(1360,max(420,sw-70)),min(850,max(440,sh-90))
+        saved=re.fullmatch(r'(\d+)x(\d+)([+-]\d+)([+-]\d+)',str(settings.get('geometry','')))
+        if saved:
+            w,h,x,y=map(int,saved.groups())
+            width=max(420,min(w,sw-30));height=max(440,min(h,sh-60))
+            x=max(0,min(x,r.winfo_screenwidth()-round(width*scale)-16))
+            y=max(0,min(y,r.winfo_screenheight()-round(height*scale)-42))
+            r.geometry(f'{width}x{height}+{x}+{y}')
+        else:r.geometry(f'{width}x{height}')
         r.minsize(420,440)
         r.attributes('-topmost',bool(self.topmost.get()))
         self.full=ctk.CTkFrame(r,fg_color=BG,corner_radius=0)
@@ -133,11 +153,12 @@ class Workspace:
         self.full.grid_rowconfigure(2,weight=1)
         bar=self.card(self.full)
         bar.grid(row=0,column=0,columnspan=2,sticky='ew',padx=10,pady=(9,4))
-        self.label(bar,'♞  Chess AI · Vision Bot','♞  Chess AI · Vision Bot',size=16,bold=True).pack(side='left',padx=12,pady=5)
-        self.label(bar,'0.9.0','0.9.0',color=MUTED,size=11).pack(side='left',padx=3)
-        self.button(bar,'↗ Оверлеи','↗ Overlays',lambda:self.navigate('settings') if not self.compact else self.toggle_overlay(),width=88).pack(side='right',padx=6,pady=5)
-        self.header_stop=self.button(bar,'■ Стоп','■ Stop',self.stop,width=66)
+        self.label(bar,'VISION BOT','VISION BOT',size=14,bold=True).pack(side='left',padx=12,pady=5)
+        self.label(bar,version,version,color=MUTED,size=11).pack(side='left',padx=3)
+        self.button(bar,'Компакт','Compact',self.toggle_overlay,width=78).pack(side='right',padx=6,pady=5)
+        self.header_stop=self.button(bar,'Стоп','Stop',self.stop,width=66)
         self.header_stop.pack(side='right',padx=3,pady=5)
+        self.header_stop.configure(fg_color=STOP_BG,hover_color=STOP_HOVER,border_color=STOP_BORDER,text_color=RED)
         self.statusbar=self.card(self.full)
         self.statusbar.grid(row=1,column=1,sticky='ew',padx=(0,10),pady=(4,5))
         self.status_cells=[]
@@ -150,17 +171,17 @@ class Workspace:
         self.side=self.card(self.full)
         self.side.grid(row=1,column=0,rowspan=4,sticky='ns',padx=(10,8),pady=(4,10))
         self.nav={}
-        self.nav_names={'home':('Сессия','Session'),'vision':('Видение','Vision'),'analysis':('Анализ','Analysis'),
+        self.nav_names={'home':('Сессия','Session'),'vision':('Доска','Board'),'analysis':('Анализ','Analysis'),
                         'log':('Журнал','Log'),'settings':('Настройки','Settings')}
         for key,(ru,en) in self.nav_names.items():
             b=self.button(self.side,ru,en,lambda k=key:self.navigate(k),width=125)
-            b.configure(image=icon_image(ctk,key),compound='left',anchor='w',height=44,fg_color='transparent',border_width=0)
+            b.configure(image=icon_image(ctk,key),compound='left',anchor='w',height=36,fg_color='transparent',border_width=0)
             b.pack(fill='x',padx=7,pady=3)
             self.nav[key]=b
         system=self.card(self.side)
         self.system_card=system
         system.pack(side='bottom',fill='x',padx=7,pady=8)
-        self.label(system,'▥  Система','▥  System',bold=True).pack(anchor='w',padx=8,pady=(7,3))
+        self.label(system,'Система','System',bold=True).pack(anchor='w',padx=8,pady=(7,3))
         for var in (self.engine_status,self.checkpoint_status,self.vision_status):
             self.label(system,variable=var,color=MUTED,size=11,wrap=112).pack(anchor='w',padx=8,pady=2)
         self.label(system,'Компьютерный бот','Computer bot only',color=MUTED,size=10,wrap=112).pack(anchor='w',padx=8,pady=(3,7))
@@ -176,13 +197,14 @@ class Workspace:
         self.action_dock.grid_columnconfigure(0,weight=3)
         self.action_dock.grid_columnconfigure(1,weight=2)
         self.action_dock.grid_columnconfigure(2,weight=1)
-        self.start=self.button(self.action_dock,'▶ Запустить автопилот','▶ Start autopilot',self.launch,primary=True,width=90)
-        self.start.configure(height=39)
+        self.start=self.button(self.action_dock,'Запустить','Start',self.launch,primary=True,width=90)
+        self.start.configure(height=36)
         self.start.grid(row=0,column=0,sticky='ew',padx=(8,4),pady=6)
-        self.attach=self.button(self.action_dock,'↪ Подключиться','↪ Join game',lambda:self.launch(attach_any_position=True),width=75)
+        self.attach=self.button(self.action_dock,'Подключиться','Join game',lambda:self.launch(attach_any_position=True),width=75)
         self.attach.grid(row=0,column=1,sticky='ew',padx=4,pady=6)
-        self.stop_button=self.button(self.action_dock,'■ Стоп','■ Stop',self.stop,width=58)
+        self.stop_button=self.button(self.action_dock,'Стоп','Stop',self.stop,width=58)
         self.stop_button.grid(row=0,column=2,sticky='ew',padx=(4,8),pady=6)
+        self.stop_button.configure(fg_color=STOP_BG,hover_color=STOP_HOVER,border_color=STOP_BORDER,text_color=RED)
         self.build_session()
         self.build_vision()
         self.build_analysis()
@@ -194,13 +216,17 @@ class Workspace:
         self.navigate('home')
         r.bind('<Configure>',self.on_resize,add='+')
         r.bind('<Escape>',lambda _:self.stop(),add='+')
+        r.bind('<Control-Shift-m>',lambda _:self.toggle_overlay(),add='+')
+        for index,key in enumerate(self.nav_names,1):
+            r.bind(f'<Control-Key-{index}>',lambda _,k=key:self.navigate(k) if not self.compact else None,add='+')
         self.refresh_workspace()
 
     def card(self,parent):
-        return self.ctk.CTkFrame(parent,fg_color=PANEL,border_width=1,border_color=BORDER,corner_radius=10)
+        return self.ctk.CTkFrame(parent,fg_color=PANEL,border_width=1,
+                                 border_color=BORDER,corner_radius=RADIUS)
 
     def label(self,parent,ru='',en='',*,variable=None,color=TEXT,size=12,bold=False,wrap=0):
-        kw=dict(text_color=color,font=('Segoe UI',size,'bold' if bold else 'normal'),anchor='w',justify='left',wraplength=wrap,height=max(16,size+5))
+        kw=dict(text_color=color,font=(FONT,size,'bold' if bold else 'normal'),anchor='w',justify='left',wraplength=wrap,height=max(16,size+5))
         if variable is not None: kw['textvariable']=variable
         else: kw['text']=self.tr(ru,en)
         w=self.ctk.CTkLabel(parent,**kw)
@@ -208,15 +234,13 @@ class Workspace:
         return w
 
     def button(self,parent,ru,en,command,*,primary=False,width=110):
-        w=self.ctk.CTkButton(parent,text=self.tr(ru,en),command=command,height=34,width=width,
-             corner_radius=8,fg_color=ACCENT if primary else FIELD,hover_color=HOVER if primary else '#353447',
-             border_width=0 if primary else 1,border_color=BORDER,text_color=TEXT,
-             font=('Segoe UI',14,'bold' if primary else 'normal'))
+        w=self.ctk.CTkButton(parent,text=self.tr(ru,en),command=command,width=width,
+                             **button_style(primary))
         self._labels.append((w,ru,en))
         return w
 
     def title(self,parent,ru,en,subtitle_ru='',subtitle_en=''):
-        self.label(parent,ru,en,size=20,bold=True).pack(anchor='w',padx=14,pady=(10,2))
+        self.label(parent,ru,en,size=18,bold=True).pack(anchor='w',padx=14,pady=(12,3))
         if subtitle_ru:self.label(parent,subtitle_ru,subtitle_en,color=MUTED,wrap=320).pack(anchor='w',padx=14,pady=(0,4))
 
     def row(self,parent):
@@ -225,12 +249,9 @@ class Workspace:
         return w
 
     def section(self,parent,n,ru,en):
-        row=self.ctk.CTkFrame(parent,fg_color='transparent')
-        row.pack(fill='x',padx=14,pady=(5,2))
-        marker=self.ctk.CTkLabel(row,text=str(n),width=24,height=24,corner_radius=12,
-                                fg_color=ACCENT,text_color=TEXT,font=('Segoe UI',13,'bold'))
-        marker.pack(side='left')
-        self.label(row,ru,en,size=14,bold=True).pack(side='left',padx=9)
+        divider=self.ctk.CTkFrame(parent,fg_color=BORDER,height=1,corner_radius=0)
+        divider.pack(fill='x',padx=16,pady=(12,5))
+        self.label(parent,ru,en,size=13,bold=True).pack(anchor='w',padx=17,pady=(0,4))
 
     def choice(self,parent,ru,en,var,values,*,change=None,lock=False):
         if ru:self.label(parent,ru,en,color=MUTED,size=11).pack(anchor='w',padx=3,pady=(0,1))
@@ -242,8 +263,8 @@ class Workspace:
             if change:change()
         opts=options()
         widget=self.ctk.CTkOptionMenu(parent,values=list(opts),command=picked,height=32,width=104,
-                 dynamic_resizing=False,corner_radius=7,fg_color=FIELD,button_color=BORDER,button_hover_color=ACCENT,
-                 dropdown_fg_color=PANEL,dropdown_hover_color=ACCENT,text_color=TEXT,font=('Segoe UI',13))
+                 dynamic_resizing=False,corner_radius=RADIUS,fg_color=FIELD,button_color=BORDER,button_hover_color=ACTIVE,
+                 dropdown_fg_color=PANEL,dropdown_hover_color=ACTIVE,dropdown_text_color=TEXT,text_color=TEXT,font=(FONT,13))
         widget.pack(fill='x',padx=3,pady=(0,2))
         widget.set(next((k for k,v in opts.items() if v==var.get()),str(var.get())))
         self._choices.append((widget,var,values))
@@ -252,8 +273,8 @@ class Workspace:
 
     def switch(self,parent,ru,en,var,command=None,lock=False):
         w=self.ctk.CTkSwitch(parent,text=self.tr(ru,en),variable=var,command=command,
-                           progress_color=ACCENT,fg_color=BORDER,button_color='#e9e9f4',text_color=TEXT,
-                           font=('Segoe UI',12))
+                           progress_color=TRACK,fg_color=BORDER,button_color=TEXT,text_color=TEXT,
+                           font=(FONT,12))
         w.pack(anchor='w',padx=14,pady=6)
         self._labels.append((w,ru,en))
         if lock:self._locked.append(w)
@@ -261,14 +282,14 @@ class Workspace:
 
     def build_session(self):
         c=self.session
-        self.title(c,'Новая сессия','New session','Подготовка, подключение к партии и запуск','Setup, connect to a game and launch')
+        self.title(c,'Настройка сессии','Session setup','Модель, область захвата и режим игры','Model, capture region and game mode')
         self.section(c,1,'Выбор модели','Choose model')
         row=self.row(c)
         picker=self.ctk.CTkFrame(row,fg_color='transparent')
         picker.pack(side='left',fill='x',expand=True)
         from .external_session import available
         self.agent_picker=self.choice(picker,'','',self.checkpoint,[(n,n,n) for n in (*ALIASES,*available())],change=self.on_agent_change)
-        self.model_hint=self.ctk.CTkFrame(row,fg_color=FIELD,corner_radius=7)
+        self.model_hint=self.ctk.CTkFrame(row,fg_color=FIELD,corner_radius=RADIUS)
         self.label(self.model_hint,'Выбранная модель','Selected model',size=10,color=MUTED).pack(anchor='w',padx=8,pady=(2,0))
         self.model_hint_text=StableStringVar(value='')
         self.label(self.model_hint,variable=self.model_hint_text,size=11).pack(anchor='w',padx=8,pady=(0,2))
@@ -279,12 +300,13 @@ class Workspace:
         self.section(c,2,'Область доски','Board region')
         row=self.row(c)
         b=self.button(row,'▣  Выделить область','▣  Select region',self.calibrate,width=150)
-        b.configure(border_color=ACCENT,fg_color='#26213c')
+        b.configure(border_color=ACCENT,fg_color=ACTIVE)
         b.pack(side='left',fill='x',expand=True,padx=(3,5));self._locked.append(b)
         self.info=self.label(row,variable=self.board_text,color=MUTED,size=11,wrap=145)
         self.info.pack(side='right',padx=4)
         self.section(c,3,'Настройки партии','Game settings')
         row=self.row(c)
+        self.option_row=row
         self.option_cells=[]
         options=[
             ('Сторона','Side',self.color,[('white','Белые','White'),('black','Чёрные','Black')]),
@@ -298,6 +320,7 @@ class Workspace:
             self.choice(cell,ru,en,var,values,lock=True)
             self.option_cells.append(cell)
         toggles=self.row(c)
+        self.toggle_row=toggles
         toggles.grid_columnconfigure((0,1),weight=1,uniform='toggles')
         self.toggle_cells=[]
         for i,(ru,en,var,command,lock) in enumerate([
@@ -305,23 +328,24 @@ class Workspace:
             ('Восстановление','Recover game',self.resume,None,True),
             ('Self-play (+500)','Self-play (+500)',self.train,None,True),
             ('Поверх окон','Always on top',self.topmost,self.set_topmost,False)]):
-            cell=self.ctk.CTkFrame(toggles,fg_color=FIELD,corner_radius=7)
+            cell=self.ctk.CTkFrame(toggles,fg_color=FIELD,corner_radius=RADIUS)
             cell.grid(row=i//2,column=i%2,sticky='ew',padx=3,pady=3)
-            toggle=self.ctk.CTkSwitch(cell,text='',variable=var,command=command,progress_color=ACCENT,
-                                      fg_color=BORDER,button_color='#e9e9f4',width=36,switch_width=34,switch_height=18)
+            toggle=self.ctk.CTkSwitch(cell,text='',variable=var,command=command,progress_color=TRACK,
+                                      fg_color=BORDER,button_color=TEXT,width=36,switch_width=34,switch_height=18)
             toggle.pack(side='right',padx=7,pady=5)
             self.label(cell,ru,en,size=12).pack(side='left',padx=7)
             if lock:self._locked.append(toggle)
             self.toggle_cells.append(cell)
         self.section(c,4,'Запуск','Launch')
         consent=self.ctk.CTkCheckBox(c,text=self.tr('Только компьютерный соперник','Computer opponent only'),variable=self.consent,
-                                    fg_color=ACCENT,hover_color=HOVER,text_color=TEXT,font=('Segoe UI',12),checkbox_width=18,checkbox_height=18)
+                                    fg_color=TRACK,hover_color=ACTIVE,text_color=TEXT,font=(FONT,12),checkbox_width=18,checkbox_height=18)
         consent.pack(anchor='w',padx=17,pady=(2,4))
         self._labels.append((consent,'Только компьютерный соперник','Computer opponent only'))
         self._locked.append(consent)
         self.label(c,'Запуск и подключение — в нижней панели.','Start and join are in the bottom action bar.',color=MUTED,size=11,wrap=280).pack(anchor='w',padx=17,pady=(0,5))
         self.warning_label=self.label(c,variable=self.notice,color=RED,wrap=300,size=11)
         self.notice.trace_add('write',lambda *_:self.show_notice())
+        c.bind('<Configure>',self.schedule_form_layout,add='+')
 
     def show_notice(self):
         if self.notice.get():self.warning_label.pack(anchor='w',padx=14,pady=(0,5))
@@ -330,17 +354,20 @@ class Workspace:
     def build_vision(self):
         c=self.vision
         header=self.row(c)
-        self.label(header,'◎  Предпросмотр доски','◎  Board preview',size=16,bold=True).pack(side='left',padx=2)
+        self.label(header,'Позиция на доске','Board position',size=16,bold=True).pack(side='left',padx=2)
         toggle=self.ctk.CTkSwitch(header,text='',variable=self.preview,command=self.toggle_preview,
-                                  width=38,switch_width=34,switch_height=18,progress_color=ACCENT,fg_color=BORDER)
+                                  width=38,switch_width=34,switch_height=18,progress_color=TRACK,fg_color=BORDER)
         toggle.pack(side='right',padx=3)
         self.preview_body=self.row(c)
         self.board=tk.Canvas(self.preview_body,width=186,height=186,bg=PANEL,highlightthickness=0)
-        self.board.pack(side='left',padx=(2,8),pady=2)
+        self.board.grid(row=0,column=0,padx=(2,8),pady=2,sticky='n')
         self.board.bind('<Configure>',self.schedule_board)
         info=self.ctk.CTkFrame(self.preview_body,fg_color='transparent')
-        info.pack(side='left',fill='both',expand=True,padx=3)
-        self.label(info,'Позиция','Position',color=MUTED,size=11).pack(anchor='w')
+        self.preview_info=info
+        info.grid(row=0,column=1,sticky='nsew',padx=3)
+        self.preview_body.grid_columnconfigure(1,weight=1)
+        self.preview_body.bind('<Configure>',self.schedule_preview_layout,add='+')
+        self.label(info,'Источник позиции','Position source',color=MUTED,size=11).pack(anchor='w')
         self.recognition=self.label(info,variable=self.fen_short,color=TEXT,size=11,wrap=125)
         self.recognition.pack(anchor='w',pady=(1,5))
         self.label(info,'Оценка · cp','Evaluation · cp',color=MUTED,size=11).pack(anchor='w')
@@ -351,30 +378,74 @@ class Workspace:
         self.fen_label.pack(anchor='w',padx=14,pady=(0,8))
         self.toggle_preview()
 
+    def schedule_preview_layout(self,event=None):
+        if self._preview_resize_job is not None:self.root.after_cancel(self._preview_resize_job)
+        self._preview_resize_job=self.root.after(90,self.apply_preview_layout)
+
+    def apply_preview_layout(self):
+        self._preview_resize_job=None
+        if not self.preview_body.winfo_ismapped():return
+        scale=self.window_scale()
+        width=self.preview_body.winfo_width()/scale
+        if width<80:return
+        plan=preview_layout(width)
+        if plan==self._preview_layout_key:return
+        self._preview_layout_key=plan
+        self.preview_body.grid_columnconfigure(0,weight=1 if plan.stacked else 0)
+        self.preview_body.grid_columnconfigure(1,weight=0 if plan.stacked else 1)
+        self.board.grid_configure(row=0,column=0,columnspan=2 if plan.stacked else 1,
+                                  padx=0 if plan.stacked else (2,8))
+        self.preview_info.grid_configure(row=1 if plan.stacked else 0,column=0 if plan.stacked else 1,
+                                         columnspan=2 if plan.stacked else 1,pady=(6,2) if plan.stacked else 0)
+        self.board.configure(width=round(plan.size*scale),height=round(plan.size*scale))
+        self.schedule_board()
+
+    def schedule_form_layout(self,event=None):
+        if self._form_resize_job is not None:self.root.after_cancel(self._form_resize_job)
+        self._form_resize_job=self.root.after(90,self.apply_form_layout)
+
+    def apply_form_layout(self):
+        self._form_resize_job=None
+        if not self.session.winfo_ismapped():return
+        width=self.option_row.winfo_width()/self.window_scale()
+        if width<80:return
+        columns=form_columns(width)
+        if columns==self._form_layout_key:return
+        self._form_layout_key=columns
+        for row in (self.option_row,self.toggle_row):
+            for col in range(3):
+                row.grid_columnconfigure(col,weight=1 if col<columns else 0,
+                                         uniform='form' if col<columns else '')
+        for i,cell in enumerate(self.option_cells):
+            cell.grid_configure(row=i//columns,column=i%columns,
+                                columnspan=columns if i==2 else 1)
+        for i,cell in enumerate(self.toggle_cells):
+            cell.grid_configure(row=i//columns,column=i%columns,columnspan=1)
+
     def build_analysis(self):
         c=self.analysis_card
-        self.title(c,'▥  Анализ позиции','▥  Position analysis')
+        self.title(c,'Анализ позиции','Position analysis')
         stats=self.row(c)
         for i,(ru,en,v) in enumerate([('Ход','Move',self.move_text),('Оценка · cp','Score · cp',self.eval_text),('Глубина','Depth',self.depth_text)]):
             stats.grid_columnconfigure(i,weight=1,uniform='metrics')
-            metric=self.ctk.CTkFrame(stats,fg_color=FIELD,corner_radius=7)
+            metric=self.ctk.CTkFrame(stats,fg_color=FIELD,corner_radius=RADIUS)
             metric.grid(row=0,column=i,sticky='ew',padx=3)
             self.label(metric,ru,en,color=MUTED,size=10).pack(anchor='w',padx=7,pady=(3,0))
             self.label(metric,variable=v,size=17,bold=True).pack(anchor='w',padx=7,pady=(0,4))
-        self.candidates=self.ctk.CTkFrame(c,fg_color=FIELD,corner_radius=7)
+        self.candidates=self.ctk.CTkFrame(c,fg_color=FIELD,corner_radius=RADIUS)
         self.candidates.pack(fill='x',padx=14,pady=(3,7))
         self.detail_label=self.label(c,variable=self.detail_text,color=MUTED,wrap=280,size=11)
         self.detail_label.pack(anchor='w',padx=14,pady=(0,5))
         self.label(c,'Полосы: policy · оценки от стороны хода','Bars: policy · scores from side to move',color=MUTED,size=10,wrap=280).pack(anchor='w',padx=14,pady=(0,6))
-        self.analysis=self.ctk.CTkTextbox(c,height=180,fg_color=FIELD,text_color=TEXT,font=('Consolas',12),wrap='word',state='disabled')
-        self.analysis.tag_config('heading',foreground='#b7a5ff')
+        self.analysis=self.ctk.CTkTextbox(c,height=180,fg_color=FIELD,text_color=TEXT,font=(MONO,12),wrap='word',state='disabled')
+        self.analysis.tag_config('heading',foreground=MUTED)
         self.build_candidate_rows()
         self.draw_candidates([])
 
     def build_log(self):
         c=self.log_card
         header=self.row(c)
-        self.label(header,'▤  Журнал сессии','▤  Session log',size=16,bold=True).pack(side='left',padx=2)
+        self.label(header,'Журнал сессии','Session log',size=16,bold=True).pack(side='left',padx=2)
         self.button(header,'Очистить вид','Clear view',self.clear_log,width=90).pack(side='right',padx=2)
         self.log_toggle=self.button(header,'⌄','⌄',self.toggle_log,width=30)
         self.log_toggle.pack(side='right',padx=2)
@@ -385,17 +456,34 @@ class Workspace:
             mapping={self.tr(a,b):v for v,a,b in self.filter_values}
             if value in mapping:
                 self.filter_var.set(mapping[value]);self.filter_log(mapping[value])
-        self.filter_choice=self.ctk.CTkSegmentedButton(filters,values=[self.tr(a,b) for _,a,b in self.filter_values],
-                command=select,height=27,corner_radius=12,fg_color=FIELD,selected_color=ACCENT,
-                selected_hover_color=HOVER,unselected_color=FIELD,unselected_hover_color=BORDER,
-                font=('Segoe UI',11))
-        self.filter_choice.pack(side='left',fill='x',expand=True)
+        self.filter_choice=self.ctk.CTkOptionMenu(filters,values=[self.tr(a,b) for _,a,b in self.filter_values],
+                command=select,height=30,corner_radius=RADIUS,fg_color=FIELD,button_color=BORDER,
+                button_hover_color=ACTIVE,dropdown_fg_color=PANEL,dropdown_hover_color=ACTIVE,
+                dropdown_text_color=TEXT,text_color=TEXT,font=(FONT,12),dynamic_resizing=False,width=110)
+        self.filter_choice.pack(side='left',padx=(0,8))
+        self.label(filters,variable=self.log_count,color=MUTED,size=11).pack(side='right')
         self.filter_choice.set(self.tr('Все','All'))
         self._choices.append((self.filter_choice,self.filter_var,self.filter_values))
-        self.log=self.ctk.CTkTextbox(c,height=76,fg_color='#13141b',text_color=TEXT,font=('Consolas',11),wrap='word',state='disabled',corner_radius=7)
+        self.log_tools=self.ctk.CTkFrame(c,fg_color='transparent')
+        self.log_search=self.ctk.CTkEntry(self.log_tools,textvariable=self.log_query,
+            fg_color=FIELD,border_color=BORDER,text_color=TEXT,height=30,corner_radius=RADIUS,
+            font=(FONT,12))
+        self.label(self.log_tools,'Поиск','Search',size=11,color=MUTED).pack(side='left',padx=(0,5))
+        self.log_search.pack(side='left',fill='x',expand=True,padx=(0,4))
+        self.log_actions=self.ctk.CTkFrame(c,fg_color='transparent')
+        self.button(self.log_actions,'Копировать','Copy',self.copy_log,width=76).pack(side='left',padx=(0,4))
+        self.button(self.log_actions,'Экспорт','Export',self.export_log,width=65).pack(side='left',padx=2)
+        self.log_options=self.ctk.CTkFrame(c,fg_color='transparent')
+        self.switch(self.log_options,'Пауза','Pause',self.log_paused,self.toggle_log_pause)
+        self.switch(self.log_options,'Следить','Follow',self.autoscroll,self.follow_log)
+        for child in self.log_options.winfo_children():
+            child.pack_configure(side='left',padx=(0,10),pady=2)
+        self.log=self.ctk.CTkTextbox(c,height=76,fg_color=FIELD,text_color=TEXT,font=(MONO,11),wrap='word',state='disabled',corner_radius=RADIUS)
         self.log.pack(fill='both',expand=True,padx=12,pady=(1,7))
-        for tag,color in [('error',RED),('move',GREEN),('analysis','#b7a5ff'),('info',TEXT)]:
+        for tag,color in [('error',RED),('move',GREEN),('analysis',MUTED),('info',TEXT)]:
             self.log.tag_config(tag,foreground=color)
+
+        self.log_query.trace_add('write',self.schedule_log_search)
 
     def build_settings(self):
         c=self.settings
@@ -405,9 +493,9 @@ class Workspace:
         self.label(c,'Прозрачность оверлея','Overlay opacity',color=MUTED).pack(anchor='w',padx=14,pady=(8,0))
         row=self.row(c)
         self.ctk.CTkSlider(row,from_=.55,to=1,number_of_steps=45,variable=self.opacity,
-                          command=self.change_opacity,progress_color=ACCENT,button_color=HOVER).pack(side='left',fill='x',expand=True)
+                          command=self.change_opacity,progress_color=TRACK,button_color=TEXT).pack(side='left',fill='x',expand=True)
         self.label(row,variable=self.alpha_text).pack(side='right',padx=8)
-        self.label(c,'Left Alt+1 / Left Alt+2: запуск / подключение в разрешённом тесте','Left Alt+1 / Left Alt+2: start / join in a permitted test',color=MUTED,wrap=300).pack(anchor='w',padx=14,pady=(2,5))
+        self.label(c,'Ctrl+1–5: разделы. Ctrl+Shift+M: компактный режим. Left Alt+1 / 2: запуск / подключение в разрешённом тесте','Ctrl+1–5: pages. Ctrl+Shift+M: compact mode. Left Alt+1 / 2: start / join in a permitted test',color=MUTED,wrap=300).pack(anchor='w',padx=14,pady=(2,5))
         self.label(c,'55–100%. Оверлей остаётся видимым и не перекрывает доску.','55–100%. Overlay stays visible and must not cover the board.',color=MUTED,wrap=300).pack(anchor='w',padx=14,pady=(0,8))
         self.section(c,'+','Рабочее пространство оверлеев','Overlay workspace')
         for key,(ru,en,_) in NAMES.items():
@@ -447,7 +535,7 @@ class Workspace:
         row=self.row(card)
         for i,(ru,en,var) in enumerate([('Выбранный ход','Chosen move',self.move_text),('Оценка · cp','Evaluation · cp',self.eval_text)]):
             row.grid_columnconfigure(i,weight=1,uniform='overlay')
-            metric=ctk.CTkFrame(row,fg_color=FIELD,corner_radius=7)
+            metric=ctk.CTkFrame(row,fg_color=FIELD,corner_radius=RADIUS)
             metric.grid(row=0,column=i,sticky='ew',padx=3)
             self.label(metric,ru,en,color=MUTED,size=10).pack(anchor='w',padx=8,pady=(3,0))
             self.label(metric,variable=var,bold=True,size=21).pack(anchor='w',padx=8,pady=(0,4))
@@ -455,24 +543,28 @@ class Workspace:
         self.label(row,'Глубина','Depth',color=MUTED,size=11).pack(side='left')
         self.label(row,variable=self.depth_text).pack(side='right')
         self.label(card,variable=self.detail_text,color=MUTED,wrap=290,size=10).pack(anchor='w',padx=12,pady=(0,4))
+        self.label(card,variable=self.latest_event_text,color=MUTED,wrap=285,size=10).pack(anchor='w',padx=12,pady=(0,4))
         actions=self.row(self.overlay)
         self.overlay_start=self.button(actions,'▶ Вкл. AI','▶ Start AI',self.launch,primary=True,width=75)
         self.overlay_start.pack(side='left',fill='x',expand=True,padx=2)
-        self.overlay_attach=self.button(actions,'↪ Присоед.','↪ Join',lambda:self.launch(attach_any_position=True),width=75)
+        self.overlay_attach=self.button(actions,'Войти','Join',lambda:self.launch(attach_any_position=True),width=75)
         self.overlay_attach.pack(side='left',fill='x',expand=True,padx=2)
         colors=self.row(self.overlay)
         self.label(colors,'Сторона','Side',size=11,color=MUTED).pack(side='left',padx=(2,6))
         self.overlay_color=self.choice(colors,'','',self.color,[('white','Белые','White'),('black','Чёрные','Black')],lock=True)
         self._locked.extend([self.overlay_start,self.overlay_attach])
         self.overlay_stop=self.button(self.overlay,'■ Остановить · Esc','■ Stop · Esc',self.stop)
-        self.overlay_stop.configure(fg_color='#482631',hover_color='#703544',border_color='#73424c',text_color='#ffd9df')
+        self.overlay_stop.configure(fg_color=STOP_BG,hover_color=STOP_HOVER,border_color=STOP_BORDER,text_color=RED)
         self.overlay_stop.pack(fill='x',padx=10,pady=(3,1))
         self.label(self.overlay,'Только компьютерный бот · LAlt+1 / 2','Computer bot only · LAlt+1 / 2',color=MUTED,size=10).pack(anchor='center')
 
     def navigate(self,key):
+        if key not in self.nav_names:return
+        if self.page!=key:
+            self._page_scroll[self.page]=self.viewport.canvas.yview()[0]
         self.page=key
         for k,b in self.nav.items():
-            b.configure(fg_color='#30264c' if k==key else 'transparent',border_width=1 if k==key else 0,border_color=ACCENT if k==key else BORDER)
+            b.configure(fg_color=ACTIVE if k==key else 'transparent',border_width=1 if k==key else 0,border_color=ACCENT if k==key else BORDER)
         self.layout()
 
     def layout(self, force=False):
@@ -481,6 +573,8 @@ class Workspace:
         scale=getattr(self.root,'_get_window_scaling',lambda:1.)() or 1.
         mode=layout_mode(width/scale,height/scale,self._layout_mode)
         key=(self.page,mode,self.log_collapsed.get())
+        previous_page=self._layout_key[0] if self._layout_key else None
+        previous_scroll=self.viewport.canvas.yview()[0]
         if not force and self._layout_key==key:return
         self._layout_mode=mode;self._layout_key=key
         wide,short=mode
@@ -489,31 +583,31 @@ class Workspace:
         self.log_card.grid_forget();self.analysis.pack_forget()
         self.full.grid_rowconfigure(2,weight=1)
         self.full.grid_rowconfigure(4,weight=0)
-        self.body.grid_columnconfigure(0,weight=3,minsize=0)
-        self.body.grid_columnconfigure(1,weight=2 if wide and self.page=='home' else 0,minsize=0)
+        self.body.grid_columnconfigure(0,weight=4,minsize=0)
+        self.body.grid_columnconfigure(1,weight=3 if wide and self.page=='home' else 0,minsize=0)
         self.body.grid_rowconfigure(0,weight=0)
         self.body.grid_rowconfigure(1,weight=0)
         self.viewport.grid()
         # Compact navigation rail saves working space at side-by-side widths.
         for key_name,button in self.nav.items():
             ru,en=self.nav_names[key_name]
-            button.configure(text=self.tr(ru,en) if wide else '',width=126 if wide else 42,anchor='w' if wide else 'center')
+            short_names={'home':('Сессия','Session'),'vision':('Доска','Board'),
+                         'analysis':('Анализ','Analysis'),'log':('Журнал','Log'),'settings':('Опции','Settings')}
+            button.configure(text=self.tr(ru,en) if wide else self.tr(*short_names[key_name]),
+                             width=126 if wide else 61,height=36 if wide else 45,
+                             font=(FONT,13 if wide else 10),compound='left' if wide else 'top',
+                             anchor='w' if wide else 'center')
         if wide:
             self.system_card.pack(side='bottom',fill='x',padx=7,pady=8)
             self.model_hint.pack(side='right',padx=(4,3))
         else:
             self.system_card.pack_forget();self.model_hint.pack_forget()
-        self.option_cells[0].master.grid_columnconfigure(2,weight=1 if wide else 0,uniform='opts' if wide else '')
-        for i,cell in enumerate(self.option_cells):
-            cell.grid(row=0 if wide else i//2,column=i if wide else i%2,columnspan=1 if wide or i<2 else 2)
-        for i,cell in enumerate(self.toggle_cells):
-            cell.grid(row=i//2,column=i%2,columnspan=1)
         for i in range(4):self.statusbar.grid_columnconfigure(i,weight=1 if wide or i<2 else 0)
         for i,child in enumerate(self.status_cells):
             child.grid(row=0 if wide else i//2,column=i if wide else i%2,pady=4)
         self.action_dock.grid(row=3,column=1,sticky='ew',padx=(0,10),pady=(2,5))
-        self.start.configure(text=self.tr('▶ Запустить автопилот','▶ Start autopilot') if wide else self.tr('▶ Запуск','▶ Start'))
-        self.attach.configure(text=self.tr('↪ Подключиться','↪ Join game') if wide else self.tr('↪ Присоед.','↪ Join'))
+        self.start.configure(text=self.tr('Запустить','Start') if wide else self.tr('Запуск','Start'))
+        self.attach.configure(text=self.tr('Подключиться','Join game') if wide else self.tr('Войти','Join'))
         if self.page=='log':
             self.viewport.grid_remove()
             self.full.grid_rowconfigure(2,weight=0);self.full.grid_rowconfigure(4,weight=1)
@@ -521,9 +615,9 @@ class Workspace:
             self.set_log_visibility(True)
         elif self.page=='home':
             if wide:
-                self.session.grid(row=0,column=0,rowspan=2,sticky='new',padx=(0,5),pady=4)
-                self.vision.grid(row=0,column=1,sticky='new',padx=(5,0),pady=4)
-                self.analysis_card.grid(row=1,column=1,sticky='new',padx=(5,0),pady=4)
+                self.session.grid(row=0,column=1,rowspan=2,sticky='new',padx=(5,0),pady=4)
+                self.vision.grid(row=0,column=0,sticky='new',padx=(0,5),pady=4)
+                self.analysis_card.grid(row=1,column=0,sticky='new',padx=(0,5),pady=4)
                 self.log_card.grid(row=4,column=1,sticky='ew',padx=(0,10),pady=(0,8))
                 self.log.configure(height=56 if short else 84)
                 self.set_log_visibility(not self.log_collapsed.get() and not short)
@@ -533,15 +627,26 @@ class Workspace:
             panels={'vision':self.vision,'analysis':self.analysis_card,'settings':self.settings}
             panels[self.page].grid(row=0,column=0,columnspan=2,sticky='ew',pady=4)
             if self.page=='analysis':self.analysis.pack(fill='both',padx=14,pady=(4,10))
-        self.viewport.reset_scroll()
+        self.schedule_preview_layout()
+        self.schedule_form_layout()
+        destination=self._page_scroll.get(self.page,0) if previous_page!=self.page else previous_scroll
+        self.viewport.restore_scroll(destination)
 
     def set_log_visibility(self, visible):
         self.log_toggle.configure(state='disabled' if self.page=='log' else 'normal',text='⌄' if visible else '⌃')
         if visible:
+            self.log.pack_forget();self.log_filters.pack_forget()
+            self.log_tools.pack_forget();self.log_actions.pack_forget();self.log_options.pack_forget()
             self.log_filters.pack(fill='x',padx=12,pady=3)
+            if self.page=='log':
+                self.log_tools.pack(fill='x',padx=12,pady=(2,0))
+                self.log_actions.pack(fill='x',padx=12,pady=(2,0))
+                self.log_options.pack(fill='x',padx=12,pady=(0,2))
+            else:
+                self.log_tools.pack_forget();self.log_actions.pack_forget();self.log_options.pack_forget()
             self.log.pack(fill='both',expand=True,padx=12,pady=(1,7))
         else:
-            self.log_filters.pack_forget();self.log.pack_forget()
+            self.log_filters.pack_forget();self.log_tools.pack_forget();self.log_actions.pack_forget();self.log_options.pack_forget();self.log.pack_forget()
 
     def toggle_log(self):
         visible=bool(self.log.winfo_manager())
@@ -568,6 +673,7 @@ class Workspace:
             mapping={self.tr(a,b):v for v,a,b in values}
             widget.configure(values=list(mapping))
             widget.set(next((k for k,v in mapping.items() if v==var.get()),str(var.get())))
+        self.log_search.configure(placeholder_text=self.tr('Поиск по журналу','Search journal'))
         self.draw_candidates((self._last_event or {}).get('details',{}).get('candidates',[]))
         self.fen_short.set(self.tr('Из телеметрии','Reported FEN') if self._fen else '—')
         if self._fen:self.set_fen(self._fen)
@@ -587,7 +693,9 @@ class Workspace:
         try:
             self._workspace_path.parent.mkdir(parents=True,exist_ok=True)
             tmp=self._workspace_path.with_suffix('.tmp')
-            tmp.write_text(json.dumps({'language':self.lang.get(),'opacity':clamp_alpha(self.opacity.get()),'preview':self.preview.get(),'log_collapsed':self.log_collapsed.get()},indent=2),encoding='utf-8')
+            tmp.write_text(json.dumps({'language':self.lang.get(),'opacity':clamp_alpha(self.opacity.get()),'preview':self.preview.get(),'log_collapsed':self.log_collapsed.get(),
+                                       'follow_log':self.autoscroll.get(),'topmost':self.topmost.get(),
+                                       'geometry':(self._full_geometry or '') if self.compact else self.root.geometry()},indent=2),encoding='utf-8')
             tmp.replace(self._workspace_path)
         except OSError as exc:self.add_view_log('error',str(exc))
 
@@ -625,31 +733,31 @@ class Workspace:
         black=self.color.get()=='black'
         if ranks and black:ranks=[list(reversed(row)) for row in reversed(ranks)]
         for y in range(8):
-            self.board.create_text(6,(y+.5)*step,text=str(y+1 if black else 8-y),fill=MUTED,font=('Segoe UI',8))
+            self.board.create_text(6,(y+.5)*step,text=str(y+1 if black else 8-y),fill=MUTED,font=(FONT,8))
             for x in range(8):
                 left=12+x*step
-                self.board.create_rectangle(left,y*step,left+step,(y+1)*step,fill='#b3b2c5' if (x+y)%2==0 else '#696b83',outline='')
+                self.board.create_rectangle(left,y*step,left+step,(y+1)*step,fill=BOARD_LIGHT if (x+y)%2==0 else BOARD_DARK,outline='')
                 piece=ranks[y][x] if ranks else '.'
                 if piece in GLYPHS:
-                    self.board.create_text(left+step/2,(y+.5)*step,text=GLYPHS[piece],fill='#ffffff' if piece.isupper() else '#121318',font=('Segoe UI Symbol',max(12,int(step*.76))))
+                    self.board.create_text(left+step/2,(y+.5)*step,text=GLYPHS[piece],fill=TEXT if piece.isupper() else BG,font=('Segoe UI Symbol',max(12,int(step*.76))))
         for x in range(8):
-            self.board.create_text(12+(x+.5)*step,8*step+7,text=('hgfedcba' if black else 'abcdefgh')[x],fill=MUTED,font=('Segoe UI',8))
+            self.board.create_text(12+(x+.5)*step,8*step+7,text=('hgfedcba' if black else 'abcdefgh')[x],fill=MUTED,font=(FONT,8))
         if not ranks:
             self.board.create_rectangle(15,size/2-15,size-3,size/2+15,fill=PANEL,outline=BORDER)
-            self.board.create_text(size/2,size/2,text=self.tr('Нет позиции','No position'),fill=TEXT,font=('Segoe UI',10))
+            self.board.create_text(size/2,size/2,text=self.tr('Нет позиции','No position'),fill=TEXT,font=(FONT,10))
 
     def build_candidate_rows(self):
-        self.candidate_empty=self.ctk.CTkLabel(self.candidates,text='',text_color=MUTED,font=('Segoe UI',11),height=24)
+        self.candidate_empty=self.ctk.CTkLabel(self.candidates,text='',text_color=MUTED,font=(FONT,11),height=24)
         self.candidate_rows=[]
         for _ in range(4):
             row=self.ctk.CTkFrame(self.candidates,fg_color='transparent',corner_radius=5)
-            move=self.ctk.CTkLabel(row,text='',text_color=TEXT,width=70,height=23,anchor='w',font=('Consolas',12,'bold'))
+            move=self.ctk.CTkLabel(row,text='',text_color=TEXT,width=70,height=23,anchor='w',font=(MONO,12,'bold'))
             move.pack(side='left',padx=5)
-            score=self.ctk.CTkLabel(row,text='',text_color=MUTED,width=52,height=23,font=('Consolas',11))
+            score=self.ctk.CTkLabel(row,text='',text_color=MUTED,width=52,height=23,font=(MONO,11))
             score.pack(side='left')
-            bar=self.ctk.CTkProgressBar(row,width=45,height=6,progress_color=ACCENT,fg_color=BORDER)
+            bar=self.ctk.CTkProgressBar(row,width=45,height=6,progress_color=TRACK,fg_color=BORDER)
             bar.pack(side='left',expand=True,fill='x',padx=4)
-            percent=self.ctk.CTkLabel(row,text='',text_color=MUTED,width=36,height=23,font=('Segoe UI',10))
+            percent=self.ctk.CTkLabel(row,text='',text_color=MUTED,width=36,height=23,font=(FONT,10))
             percent.pack(side='right',padx=5)
             self.candidate_rows.append((row,move,score,bar,percent))
         self._candidate_signature=None
@@ -669,7 +777,7 @@ class Workspace:
         for i,(row,move,score,bar,percent) in enumerate(self.candidate_rows):
             if i>=len(entries):row.pack_forget();continue
             c=entries[i];cp=c.get('cp');policy=c.get('policy');chosen=c.get('move')==selected
-            row.configure(fg_color='#30264c' if chosen else 'transparent')
+            row.configure(fg_color=ACTIVE if chosen else 'transparent')
             move.configure(text=('◆ ' if chosen else '   ')+str(c.get('move') or '—'))
             score.configure(text=f'{cp:+d}' if isinstance(cp,int) else '—',
                             text_color=GREEN if isinstance(cp,int) and cp>0 else RED if isinstance(cp,int) and cp<0 else MUTED)
@@ -715,23 +823,71 @@ class Workspace:
 
     def add_view_log(self,tag,text):
         line=(tag,f'[{datetime.datetime.now():%H:%M:%S}] {text}\n')
+        evicted=self._messages[0] if len(self._messages)==self._messages.maxlen else None
         self._messages.append(line)
-        if self._filter in ('all',tag):
-            self.log.configure(state='normal');self.log.insert('end',line[1],tag)
-            if int(self.log.index('end-1c').split('.')[0])>1200:self.log.delete('1.0','301.0')
-            self.log.configure(state='disabled')
-            if self.autoscroll.get():self.log.see('end')
+        self.latest_event_text.set(short_text(text,75))
+        if self.log_paused.get():return
+        query=self._applied_query
+        remove=bool(evicted and self._visible_entries and evicted is self._visible_entries[0])
+        append=matches(line,self._filter,query)
+        if not (remove or append):
+            self.log_count.set(f'{len(self._visible_entries)} / {len(self._messages)}')
+            return
+        follow=self.autoscroll.get() and self.log.yview()[1]>=.999
+        self.log.configure(state='normal')
+        if remove:
+            old=self._visible_entries.popleft()[1]
+            self.log.delete('1.0',f'{old.count(chr(10))+1}.0')
+        if append:
+            self._visible_entries.append(line)
+            self.log.insert('end',line[1],tag)
+        self.log.configure(state='disabled')
+        if follow:self.log.see('end')
+        self.log_count.set(f'{len(self._visible_entries)} / {len(self._messages)}')
+
+    def schedule_log_search(self,*_):
+        if self._log_search_job is not None:self.root.after_cancel(self._log_search_job)
+        self._log_search_job=self.root.after(150,self.apply_log_search)
+
+    def apply_log_search(self):
+        self._log_search_job=None
+        self.filter_log(self._filter)
 
     def filter_log(self,value):
+        same=value==self._filter and self._applied_query==self.log_query.get()
+        old_view=self.log.yview()[0]
         self._filter=value
+        entries=self._paused_messages if self.log_paused.get() else self._messages
+        self._applied_query=self.log_query.get()
+        self._visible_entries=deque(select_entries(entries,value,self._applied_query))
         self.log.configure(state='normal');self.log.delete('1.0','end')
-        for tag,line in self._messages:
-            if value in ('all',tag):self.log.insert('end',line,tag)
+        for tag,line in self._visible_entries:self.log.insert('end',line,tag)
         self.log.configure(state='disabled')
         if self.autoscroll.get():self.log.see('end')
+        else:self.log.yview_moveto(old_view if same else 0)
+        self.log_count.set(f'{len(self._visible_entries)} / {len(entries)}')
+
+    def toggle_log_pause(self):
+        if self.log_paused.get():self._paused_messages=tuple(self._messages)
+        else:self._paused_messages=()
+        self.filter_log(self._filter)
+
+    def follow_log(self):
+        if self.autoscroll.get():self.log.see('end')
+
+    def copy_log(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.log.get('1.0','end-1c'))
+
+    def export_log(self):
+        path=filedialog.asksaveasfilename(parent=self.root,defaultextension='.log',
+            filetypes=[('Log','*.log'),('Text','*.txt')])
+        if not path:return
+        try:Path(path).write_text(self.log.get('1.0','end-1c'),encoding='utf-8')
+        except OSError as exc:messagebox.showerror('Vision Bot',str(exc),parent=self.root)
 
     def clear_view_log(self):
-        self._messages.clear();self.filter_log(self._filter)
+        self._messages.clear();self._paused_messages=();self.filter_log(self._filter)
 
     def panel_overlaps(self):
         if not self.rect:return False
@@ -765,11 +921,16 @@ class Workspace:
         self.summary_text.set(self.checkpoint.get()+' · '+self.tr('Белые','White') if self.color.get()=='white' else self.checkpoint.get()+' · '+self.tr('Чёрные','Black'))
         if active and self.panel_overlaps() and not self.ev.is_set():
             self.ev.set();self.add_view_log('error',self.tr('Окно перекрывает доску. Запрошена остановка.','Window overlaps board. Stop requested.'))
-        if active:self.state_text.set(self.tr('Остановка…','Stopping…') if self.ev.is_set() else self.tr('Сессия активна','Session active'))
-        elif self.worker:self.state_text.set(self.tr('● Остановлено','● Stopped'))
-        elif self.rect and self._engine_exists and self._model_exists and self.consent.get():
-            self.state_text.set(self.tr('● Готов к работе','● Ready'))
-        else:self.state_text.set(self.tr('○ Настройка','○ Setup'))
+        state=session_state(active,self.ev.is_set(),self.worker is not None,bool(self.rect),
+                            self._engine_exists,self._model_exists,self.consent.get())
+        names={'active':('Сессия активна','Session active'),'stopping':('Остановка…','Stopping…'),
+               'stopped':('Остановлено','Stopped'),'ready':('Готов к работе','Ready'),
+               'setup':('Настройка','Setup')}
+        self.state_text.set(self.tr(*names[state]))
+        state_color=GREEN if state in ('active','ready') else WARNING if state=='stopping' else MUTED
+        if getattr(self,'_status_color',None)!=state_color:
+            self.status_cells[0].configure(text_color=state_color)
+            self._status_color=state_color
         self.overlays.refresh()
         if self._status_cache!=active:
             self._status_cache=active

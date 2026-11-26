@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from .design import TRACK, DIM
 
 def layout_mode(width, height, previous=None):
     # Hysteresis prevents repeated grid changes at a breakpoint.
@@ -31,7 +32,7 @@ class ScrollViewport(tk.Frame):
         super().__init__(parent, bg=background, bd=0, highlightthickness=0)
         self.canvas = tk.Canvas(self, bg=background, bd=0, highlightthickness=0)
         self.scrollbar = (scrollbar_class(self, orientation='vertical', command=self.canvas.yview, width=10,
-                                          fg_color=background, button_color='#353746', button_hover_color='#55586b')
+                                          fg_color=background, button_color=TRACK, button_hover_color=DIM)
                           if scrollbar_class else tk.Scrollbar(self, orient='vertical', command=self.canvas.yview))
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
         self.canvas.pack(side='left', fill='both', expand=True)
@@ -40,6 +41,7 @@ class ScrollViewport(tk.Frame):
         self._width = None
         self._region = None
         self._pending = None
+        self._restore_job = None
         self._scrollbar_visible = False
         self.canvas.bind('<Configure>', self._resize, add='+')
         self.body.bind('<Configure>', self._schedule_region, add='+')
@@ -78,11 +80,22 @@ class ScrollViewport(tk.Frame):
             self.canvas.yview_scroll(-int(event.delta / 120), 'units')
             return 'break'
 
+    def restore_scroll(self, fraction):
+        # Wait for debounced form/board geometry and scroll-region updates.
+        if self._restore_job is not None:self.after_cancel(self._restore_job)
+        def apply():
+            self._restore_job=None
+            self.canvas.yview_moveto(max(0.,min(1.,float(fraction))))
+        self._restore_job=self.after(200,apply)
+
     def reset_scroll(self):
-        self.canvas.yview_moveto(0)
+        self.restore_scroll(0)
 
     def destroy(self):
         if self._pending is not None:
             self.after_cancel(self._pending)
             self._pending = None
+        if self._restore_job is not None:
+            self.after_cancel(self._restore_job)
+            self._restore_job=None
         super().destroy()

@@ -2,7 +2,7 @@
 
 # Chess AI 🧠
 
-[![Version](https://img.shields.io/badge/version-0.9.2-7154e8)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.9.4-242424)](VERSION)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows)](docs/README.md)
 [![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python)](requirements.txt)
 [![PyTorch](https://img.shields.io/badge/PyTorch-CUDA%20%7C%20CPU-EE4C2C?logo=pytorch)](requirements.txt)
@@ -13,6 +13,10 @@
 [Архитектура](docs/ARCHITECTURE.md) · [Обновление](docs/LOCAL_UPDATE.md) · [Сборка](docs/README.md) · [Требования](docs/COMPATIBILITY.md)
 
 </div>
+
+## Vision Bot 0.9.4 — UI Foundation
+
+Тестовая версия редизайна: общая монохромная дизайн-система, адаптивные панели, компактный режим, журнал с поиском и экспортом. Вычислительное ядро и веса не изменены. Полная визуальная приёмка на Windows ещё не проведена. [Изменения и проверка](docs/VISION_UI_REENGINEERING.md).
 
 > [!IMPORTANT]
 > Обновление версии само по себе не делает модель сильнее. Силу проверяйте через **Holdout Evaluation**, а не по loss или загрузке GPU. Веса и кодировщик позиций (`planes19_actions73_v1`) совместимы с v0.6.0.

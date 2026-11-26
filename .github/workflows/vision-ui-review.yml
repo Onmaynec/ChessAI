@@ -1,0 +1,28 @@
+name: Vision UI review
+on:
+  push:
+    branches: ['vision-ui/reengineering']
+  pull_request:
+    paths:
+      - 'visionbot/**'
+      - 'tools/vision_ui_capture.py'
+      - 'tests/test_vision_ui_design.py'
+      - 'tests/test_vision_presentation_rules.py'
+      - '.github/workflows/vision-ui-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  presentation:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Syntax check
+        run: python -m compileall -q visionbot tools/vision_ui_capture.py tests/test_vision_ui_design.py tests/test_vision_presentation_rules.py
+      - name: Pure presentation tests
+        run: |
+          python -m unittest discover -s tests -p test_vision_ui_design.py -v
+          python -m unittest discover -s tests -p test_vision_presentation_rules.py -v
