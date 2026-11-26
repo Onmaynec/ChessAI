@@ -17,6 +17,7 @@
 # Python
 /.venv/
 /.venv-cuda/
+/.venv-qt/
 /venv/
 __pycache__/
 .pytest_cache/
@@ -50,3 +51,7 @@ BOT_LAB_INSTALL_ROOT.txt
 /tactical_experiments/
 
 /benchmark/suite_v4.json
+
+# Local UI captures
+/artifacts/vision-qt/
+/artifacts/vision-ui/
