@@ -24,7 +24,7 @@ from .design import (BG, PANEL, FIELD, BORDER, TEXT, MUTED, DIM, ACCENT,
                      BOARD_LIGHT, BOARD_DARK, STOP_BG, STOP_HOVER, STOP_BORDER, WARNING,
                      FONT, MONO, RADIUS, button_style)
 from .log_model import matches, select_entries
-from .presentation_rules import preview_layout, form_columns, short_text
+from .presentation_rules import settled_preview_layout, stable_form_columns, short_text
 from .ui_state import SessionSnapshot, AnalysisSnapshot
 
 GLYPHS=dict(zip('KQRBNPkqrbnp','♔♕♖♗♘♙♚♛♜♝♞♟'))
@@ -195,12 +195,12 @@ class Workspace:
         self.settings=self.card(self.body)
         self.log_card=self.card(self.full)
         self.action_dock=self.card(self.full)
-        self.action_dock.grid_columnconfigure(0,weight=3)
-        self.action_dock.grid_columnconfigure(1,weight=2)
-        self.action_dock.grid_columnconfigure(2,weight=1)
-        self.start=self.button(self.action_dock,'Запустить','Start',self.launch,primary=True,width=90)
+        self.action_dock.grid_columnconfigure(0,weight=1)
+        self.action_dock.grid_columnconfigure(1,weight=0)
+        self.action_dock.grid_columnconfigure(2,weight=0)
+        self.start=self.button(self.action_dock,'Запустить','Start',self.launch,primary=True,width=126)
         self.start.configure(height=36)
-        self.start.grid(row=0,column=0,sticky='ew',padx=(8,4),pady=6)
+        self.start.grid(row=0,column=0,sticky='w',padx=(8,4),pady=6)
         self.attach=self.button(self.action_dock,'Подключиться','Join game',lambda:self.launch(attach_any_position=True),width=75)
         self.attach.grid(row=0,column=1,sticky='ew',padx=4,pady=6)
         self.stop_button=self.button(self.action_dock,'Стоп','Stop',self.stop,width=58)
@@ -380,37 +380,37 @@ class Workspace:
         self.toggle_preview()
 
     def schedule_preview_layout(self,event=None):
-        if self._preview_resize_job is not None:self.root.after_cancel(self._preview_resize_job)
-        self._preview_resize_job=self.root.after(90,self.apply_preview_layout)
+        if self._layout_pending is not None:return
+        if self._preview_resize_job is None:self._preview_resize_job=self.root.after(120,self.apply_preview_layout)
 
     def apply_preview_layout(self):
         self._preview_resize_job=None
-        if not self.preview_body.winfo_ismapped():return
+        if self._layout_pending is not None or not self.preview_body.winfo_ismapped():return
         scale=self.window_scale()
         width=self.preview_body.winfo_width()/scale
         if width<80:return
-        plan=preview_layout(width)
+        plan=settled_preview_layout(width,self._preview_layout_key)
         if plan==self._preview_layout_key:return
         self._preview_layout_key=plan
         self.preview_body.grid_columnconfigure(0,weight=1 if plan.stacked else 0)
         self.preview_body.grid_columnconfigure(1,weight=0 if plan.stacked else 1)
         self.board.grid_configure(row=0,column=0,columnspan=2 if plan.stacked else 1,
-                                  padx=0 if plan.stacked else (2,8))
+                                  padx=0 if plan.stacked else (2,16),sticky='n' if plan.stacked else 'ne')
         self.preview_info.grid_configure(row=1 if plan.stacked else 0,column=0 if plan.stacked else 1,
                                          columnspan=2 if plan.stacked else 1,pady=(6,2) if plan.stacked else 0)
         self.board.configure(width=round(plan.size*scale),height=round(plan.size*scale))
         self.schedule_board()
 
     def schedule_form_layout(self,event=None):
-        if self._form_resize_job is not None:self.root.after_cancel(self._form_resize_job)
-        self._form_resize_job=self.root.after(90,self.apply_form_layout)
+        if self._layout_pending is not None:return
+        if self._form_resize_job is None:self._form_resize_job=self.root.after(120,self.apply_form_layout)
 
     def apply_form_layout(self):
         self._form_resize_job=None
-        if not self.session.winfo_ismapped():return
+        if self._layout_pending is not None or not self.session.winfo_ismapped():return
         width=self.option_row.winfo_width()/self.window_scale()
         if width<80:return
-        columns=form_columns(width)
+        columns=stable_form_columns(width,self._form_layout_key)
         if columns==self._form_layout_key:return
         self._form_layout_key=columns
         for row in (self.option_row,self.toggle_row):
@@ -584,8 +584,8 @@ class Workspace:
         self.log_card.grid_forget();self.analysis.pack_forget()
         self.full.grid_rowconfigure(2,weight=1)
         self.full.grid_rowconfigure(4,weight=0)
-        self.body.grid_columnconfigure(0,weight=4,minsize=0)
-        self.body.grid_columnconfigure(1,weight=3 if wide and self.page=='home' else 0,minsize=0)
+        self.body.grid_columnconfigure(0,weight=3 if wide and self.page=='home' else 1,minsize=0)
+        self.body.grid_columnconfigure(1,weight=4 if wide and self.page=='home' else 0,minsize=0)
         self.body.grid_rowconfigure(0,weight=0)
         self.body.grid_rowconfigure(1,weight=0)
         self.viewport.grid()
@@ -616,9 +616,9 @@ class Workspace:
             self.set_log_visibility(True)
         elif self.page=='home':
             if wide:
-                self.session.grid(row=0,column=1,rowspan=2,sticky='new',padx=(5,0),pady=4)
-                self.vision.grid(row=0,column=0,sticky='new',padx=(0,5),pady=4)
-                self.analysis_card.grid(row=1,column=0,sticky='new',padx=(0,5),pady=4)
+                self.session.grid(row=0,column=0,rowspan=2,sticky='new',padx=(0,6),pady=4)
+                self.vision.grid(row=0,column=1,sticky='new',padx=(6,0),pady=4)
+                self.analysis_card.grid(row=1,column=1,sticky='new',padx=(6,0),pady=4)
                 self.log_card.grid(row=4,column=1,sticky='ew',padx=(0,10),pady=(0,8))
                 self.log.configure(height=56 if short else 84)
                 self.set_log_visibility(not self.log_collapsed.get() and not short)
@@ -666,7 +666,11 @@ class Workspace:
 
     def finish_resize(self):
         self._layout_pending=None
-        if not self.compact:self.layout()
+        if not self.compact:
+            self.layout()
+            self.schedule_preview_layout()
+            self.schedule_form_layout()
+            self.schedule_board()
 
     def change_language(self):
         for widget,ru,en in self._labels:widget.configure(text=self.tr(ru,en))
@@ -710,8 +714,8 @@ class Workspace:
             self.root.clipboard_clear();self.root.clipboard_append(self._fen)
 
     def schedule_board(self,event=None):
-        if self._board_pending is not None:self.root.after_cancel(self._board_pending)
-        self._board_pending=self.root.after(100,self.draw_board)
+        if self._layout_pending is not None:return
+        if self._board_pending is None:self._board_pending=self.root.after(120,self.draw_board)
 
     def sync_color(self,*_):
         for widget,var,values in self._choices:
@@ -723,6 +727,7 @@ class Workspace:
     def draw_board(self):
         if self._board_pending is not None:
             self.root.after_cancel(self._board_pending);self._board_pending=None
+        if self._layout_pending is not None or not self.board.winfo_ismapped():return
         size=min(max(80,self.board.winfo_width()),max(80,self.board.winfo_height()))
         signature=(self._fen,size,self.color.get(),self.lang.get())
         if signature==self._board_signature:return
