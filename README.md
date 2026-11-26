@@ -2,7 +2,7 @@
 
 # Chess AI 🧠
 
-[![Version](https://img.shields.io/badge/version-0.9.10-242424)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.9.11-242424)](VERSION)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows)](docs/README.md)
 [![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python)](requirements.txt)
 [![PyTorch](https://img.shields.io/badge/PyTorch-CUDA%20%7C%20CPU-EE4C2C?logo=pytorch)](requirements.txt)
@@ -14,7 +14,11 @@
 
 </div>
 
-## Vision Bot 0.9.10 — Performance & Accessibility (Qt preview)
+## Vision Bot 0.9.11 — Visual QA & Final Refinement (Qt preview)
+
+Исправления компоновки, 30 сценариев захвата, проверяемый JSON-отчёт, сбор предупреждений QML и критерии приёмки. Рабочая Qt-миграция ещё не завершена. [Инструкция по приёмке](docs/VISION_UI_QA_0911.md).
+
+### 0.9.10 — Performance & Accessibility (Qt preview)
 
 Индексация журнала, ограничение размера локального импорта, кэширование доски, масштаб текста и клавиатурная навигация. Только локальный preview. [Измерения и ограничения](docs/VISION_UI_PERFORMANCE_0910.md).
 
