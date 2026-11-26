@@ -15,6 +15,7 @@ Button {
     font.weight: primary ? Font.DemiBold : Font.Normal
     contentItem: Text {
         text: control.text
+        textFormat: Text.PlainText
         font: control.font
         color: !control.enabled ? theme.dim : control.primary ? theme.bg : theme.text
         horizontalAlignment: Text.AlignHCenter
