@@ -207,7 +207,7 @@ class VisionAutoplay:
                  *, resume: bool = True, recovery_enabled: bool | None = None,
                  attach_any_position: bool = False, explicit_turn: str | None = None,
                  analysis_level: str = 'standard', browser_window=None, phantom_opening: bool=False,
-                 store_factory=RecoveryStore, external_authorized=False):
+                 store_factory=RecoveryStore, external_authorized=False, computer_only=False):
         self.engine=engine;self.checkpoint=checkpoint;self.run_dir=run_dir
         self.color=color;self.rect=rect;self.report=report;self.stop=stop
         self.device=device;self.screen=screen;self.session_factory=session_factory
@@ -220,6 +220,7 @@ class VisionAutoplay:
         self.browser_window=browser_window
         self.store_factory=store_factory
         self.external_authorized=bool(external_authorized)
+        self.computer_only=bool(computer_only or external_authorized)
         self._agent_lock=threading.Lock()
         self._queued_agent=None
         # Test-injected mock sessions do not necessarily support the C++ journal.
@@ -359,7 +360,7 @@ class VisionAutoplay:
         # screen must be kept on self for _observe() and closed on exit.
         # Previously run() used a local variable only, causing:
         # AttributeError: 'NoneType' object has no attribute 'grab'
-        if self.external_authorized:
+        if self.computer_only:
             from .external_session import computer_title
             if self.browser_window is None or not computer_title(self.browser_window.title):
                 self.report('ОСТАНОВКА: требуется подтверждённое окно компьютерной игры');return
@@ -514,13 +515,13 @@ class VisionAutoplay:
                     if focus_browser_from_panel(self.browser_window):
                         self.report('Фокус возвращён браузеру после просмотра панели анализа')
                     self._check_stop()
-                    if self.external_authorized:
+                    if self.computer_only:
                         from .focus import current_foreground
                         from .external_session import computer_title
                         hwnd,title=current_foreground()
                         if hwnd!=self.expected_hwnd or not computer_title(title):raise RuntimeError('Computer-only window check failed; no move sent')
                     click_move(move,self.rect,self.color,screen,expected_hwnd=self.expected_hwnd,report=self.report,
-                               **({'computer_only':True} if self.external_authorized else {}))
+                               **({'computer_only':True} if self.computer_only else {}))
                     self.report(f'Клик выполнен: {move}; проверяю изображение доски')
                     replies = self._preview_opponent_replies(sess, move)
                     recognized, fast_reply = self._wait_own_or_immediate_reply(
