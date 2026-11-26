@@ -120,7 +120,7 @@ ApplicationWindow {
                             }
                             Rectangle { height: 1; color: theme.border; Layout.fillWidth: true }
                             Label { text: "Источник: " + sourceLabel; color: theme.text; Layout.fillWidth: true; wrapMode: Text.Wrap }
-                            Label { text: "Модель: " + (visionModel.model || "—"); color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                            Label { text: "Модель: " + (visionModel.model || "—"); textFormat: Text.PlainText; color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
                         }
                     }
                     GridLayout {
@@ -137,7 +137,7 @@ ApplicationWindow {
                         contentItem: ColumnLayout {
                             spacing: 10
                             Label { text: "Позиция · FEN"; font.pixelSize: 17; font.weight: Font.DemiBold; color: theme.text }
-                            Label { text: visionModel.fen || "Позиция ещё не получена."; color: theme.muted; font.family: theme.mono; wrapMode: Text.WrapAnywhere; Layout.fillWidth: true }
+                            Label { text: visionModel.fen || "Позиция ещё не получена."; textFormat: Text.PlainText; color: theme.muted; font.family: theme.mono; wrapMode: Text.WrapAnywhere; Layout.fillWidth: true }
                             UiButton { text: "Подробный анализ"; onClicked: root.page = 1; Layout.alignment: Qt.AlignLeft }
                         }
                     }
@@ -172,6 +172,7 @@ ApplicationWindow {
                             TextArea {
                                 text: visionModel.fen || "Нет данных"
                                 readOnly: true
+                                textFormat: TextEdit.PlainText
                                 selectByMouse: true
                                 wrapMode: TextEdit.WrapAnywhere
                                 color: theme.muted
@@ -271,7 +272,7 @@ ApplicationWindow {
                             spacing: 12
                             Label { text: "Оформление"; color: theme.text; font.pixelSize: 17; font.weight: Font.DemiBold }
                             Label { text: "Monochrome · #000000"; color: theme.muted }
-                            CheckBox { id: top; text: "Поверх окон (только preview)"; palette.windowText: theme.text; onToggled: root.flags = Qt.Window | (checked ? Qt.WindowStaysOnTopHint : 0) }
+                            CheckBox { id: top; text: "Поверх окон (только preview)"; palette.windowText: theme.text; onToggled: root.flags = checked ? root.flags | Qt.WindowStaysOnTopHint : root.flags & ~Qt.WindowStaysOnTopHint }
                             Label { text: "Ctrl+1–4 — переключение разделов"; color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
                         }
                     }
