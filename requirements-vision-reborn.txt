@@ -1,0 +1,6 @@
+# UI and capture packages; preserve the existing torch CPU/CUDA installation.
+PySide6>=6.8,<7
+mss>=10,<13
+Pillow>=11,<13
+opencv-python>=4.10,<5
+pyautogui>=0.9.54,<1
