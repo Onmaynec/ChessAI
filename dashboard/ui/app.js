@@ -22,14 +22,14 @@ function classResult(result){return result==='1-0'||result==='0-1'?'win':result=
 const graphState = new WeakMap();
 const LA=globalThis.LabAnalytics;
 const UX=globalThis.LabUX,REL=globalThis.LabReliability;
-let failures=0,connected=false,selectionPending=false,refreshAgain=false,stopPending=false,stopSentRun=null,healthSnapshot=null,healthAt=null,pollTimer=null,pollRunning=false;
+let failures=0,connected=false,selectionEpoch=0,selectionPending=false,refreshAgain=false,stopPending=false,stopSentRun=null,healthSnapshot=null,healthAt=null,pollTimer=null,pollRunning=false;
 const generation=REL.gate();let researchAt=null,researchKey='',gamesAt=null,gamesKey='';
 const htmlCache=new WeakMap();
 function setHTML(el,html){const old=htmlCache.get(el);if(old?.html===html&&old.first===el.firstElementChild)return;el.innerHTML=html;htmlCache.set(el,{html,first:el.firstElementChild})}
 function modalActive(){return application.overlayOpen||application.replay||$('command-dialog').open||$('resume-dialog').open||$('confirm-dialog').open}
 function canMutate(){return connected&&!selectionPending&&application.overview?.selected===application.selected&&!application.overview?.file_warnings?.length}
 function updateActionState(){const d=application.overview,locked=!canMutate();$('open-config').disabled=$('runs-new').disabled=locked||!!d?.process?.active||!healthSnapshot?.engine_ready;$('stop-btn').disabled=locked||stopPending||stopSentRun===application.selected;$('resume-btn').disabled=locked||!!d?.process?.active||!healthSnapshot?.engine_ready}
-function selectRun(run){if(run===application.selected)return;application.selected=run;selectionPending=true;generation.next();researchAt=gamesAt=null;closeReplay();$('sync-label').textContent='Загрузка эксперимента…';updateActionState();refresh()}
+function selectRun(run){if(run===application.selected)return;application.selected=run;selectionEpoch++;selectionPending=true;generation.next();researchAt=gamesAt=null;closeReplay();$('sync-label').textContent='Загрузка эксперимента…';updateActionState();refresh()}
 const prefsKey='chessai.lab.ux.v1';
 function readPrefs(){try{return JSON.parse(localStorage.getItem(prefsKey)||'{}')||{}}catch(_){return {}}}
 function savePrefs(change){try{localStorage.setItem(prefsKey,JSON.stringify({...readPrefs(),...change}))}catch(_){}}
@@ -205,7 +205,7 @@ function renderRuns(){const d=application.overview;if(!d)return;
 let analysisBusy=false,analysisAgain=false;
 async function loadAnalysis(force=false){if(analysisBusy){if(force)analysisAgain=true;return}const screen=application.screen;if(!researchScreens.has(screen)||selectionPending)return;const key=screen+'|'+application.selected;if(!force&&researchKey===key&&!REL.due(researchAt,Date.now(),screen==='system'?20000:10000))return;
   if(!application.selected){for(const id of ['analysis-warnings','quality-status','best-status','gpu-info','storage-status','performance-status','evaluation-history','tournament-ranking','agent-results','agent-training-health','color-audit-info','hardware-benchmark-info'])$(id).textContent='Выберите или создайте эксперимент.';for(const id of ['a-finished','a-samples','a-score','a-checkpoint'])$(id).textContent='—';for(const id of ['completion-chart','analysis-value-chart','kl-chart','clip-chart'])graph($(id),[]);renderPerformance([]);updateEvaluationReports([],null);$('eval-live').textContent='Нет выбранного эксперимента';return}
-  const run=application.selected,valid=()=>application.selected===run&&application.screen===screen&&!selectionPending;analysisBusy=true;researchKey=key;
+  const run=application.selected,epoch=selectionEpoch,valid=()=>selectionEpoch===epoch&&application.selected===run&&application.screen===screen&&!selectionPending;analysisBusy=true;researchKey=key;
   try{
     if(screen==='agents'){await loadAgentLab(run);if(valid())researchAt=Date.now();return}
     const data=await api('/api/analysis?'+new URLSearchParams({run,series_limit:'600'}));
@@ -256,9 +256,9 @@ async function loadAnalysis(force=false){if(analysisBusy){if(force)analysisAgain
 }
 
 let gamesBusy=false,gamesAgain=false;
-async function loadGames(force=false){if(selectionPending)return;if(!application.selected){$('games-list').innerHTML='<tr><td colspan="6" class="table-empty">Нет выбранного эксперимента</td></tr>';$('games-count').textContent='—';return}if(gamesBusy){if(force)gamesAgain=true;return}const run=application.selected;
+async function loadGames(force=false){if(selectionPending||application.screen!=='games')return;if(!application.selected){$('games-list').innerHTML='<tr><td colspan="6" class="table-empty">Нет выбранного эксперимента</td></tr>';$('games-count').textContent='—';return}if(gamesBusy){if(force)gamesAgain=true;return}const run=application.selected,epoch=selectionEpoch;
   const kind=$('game-kind').value,result=$('game-result').value,key=[run,kind,result].join('|');if(!force&&gamesKey===key&&!REL.due(gamesAt,Date.now(),5000))return;gamesBusy=true;gamesKey=key;
-  try{const data=await api('/api/games?'+new URLSearchParams({run,kind,result,limit:'50'}));if(application.selected!==run||application.screen!=='games'||$('game-kind').value!==kind||$('game-result').value!==result)return;gamesAt=Date.now();$('games-count').textContent=`${data.games.length} последних записей`;
+  try{const data=await api('/api/games?'+new URLSearchParams({run,kind,result,limit:'50'}));if(selectionEpoch!==epoch||application.selected!==run||application.screen!=='games'||$('game-kind').value!==kind||$('game-result').value!==result)return;gamesAt=Date.now();$('games-count').textContent=`${data.games.length} последних записей`;
   $('games-list').innerHTML=data.games.length?data.games.map(g=>`<tr><td>#${g.game_id}</td><td>${g.iteration}</td><td><span class="result-pill ${classResult(g.result)}">${esc(resultNames[g.result]||g.result)}</span></td><td>${esc(reasonNames[g.reason]||g.reason)}</td><td>${fmt(g.plies)}</td><td><button class="table-button view-game" data-id="${g.game_id}" data-kind="${kind}">Открыть →</button></td></tr>`).join(''):'<tr><td colspan="6" class="table-empty">Записей с таким результатом пока нет</td></tr>';}
   catch(e){if(application.selected===run&&application.screen==='games'){$('games-count').textContent='Данные устарели · '+e.message;gamesAt=Date.now()}}finally{gamesBusy=false;if(gamesAgain){gamesAgain=false;queueMicrotask(()=>loadGames(true))}}
 }
@@ -337,7 +337,7 @@ function playReplay(){if(!application.replay)return;if(replayTimer!==null){pause
  const next=()=>{if(!application.replay||document.hidden){pauseReplay();return}replayPosition(application.replayStep+1);if(application.replayStep<application.replay.moves.length)replayTimer=setTimeout(next,+$('replay-speed').value)};
  replayTimer=setTimeout(next,+$('replay-speed').value);
 }
-async function showReplay(gameId,kind){if(!application.selected)return;const run=application.selected,request=++replayRequest;try{
+async function showReplay(gameId,kind){if(!application.selected||selectionPending||application.overview?.selected!==application.selected)return;const run=application.selected,request=++replayRequest;try{
  const game=await api('/api/game/'+gameId+'?'+new URLSearchParams({run,kind}));
  if(request!==replayRequest||application.selected!==run)return;
  if(!Array.isArray(game.moves)||!Array.isArray(game.fens)||game.fens.length!==game.moves.length+1)throw Error('Неполная история позиций');
@@ -389,14 +389,14 @@ for(const [id,step] of [['replay-first',()=>0],['replay-last',()=>application.re
 $('replay-board').onkeydown=e=>{if(['ArrowRight','ArrowLeft','Home','End'].includes(e.key)){e.preventDefault();pauseReplay();replayPosition(e.key==='Home'?0:e.key==='End'?application.replay.moves.length:application.replayStep+(e.key==='ArrowRight'?1:-1))}};
 async function poll(force=false){if(pollRunning)return;pollRunning=true;clearTimeout(pollTimer);try{if(!document.hidden){await refresh(force);if(connected&&!selectionPending&&!modalActive()){if(application.screen==='games')await loadGames(force);if(researchScreens.has(application.screen))await loadAnalysis(force)}}}finally{pollRunning=false;pollTimer=setTimeout(()=>poll(),REL.delay(failures,!!application.overview?.process?.active,document.hidden,modalActive()))}}
 
-$('compact-storage').onclick=async()=>{if(!application.selected){toast('Выберите эксперимент');return}if(!await askConfirm('Обучение остановлено? Сжать журналы эксперимента без потери истории?'))return;try{const d=await api('/api/storage/'+encodeURIComponent(application.selected)+'/compact',{method:'POST'});toast('Безопасное сжатие выполнено: '+num(d.result.saved_bytes/1048576,1)+' МБ освобождено');await loadAnalysis()}catch(e){toast('Сжатие: '+e.message)}};
+$('compact-storage').onclick=async()=>{const run=application.selected;if(!run||!canMutate()){toast('Выберите актуальный эксперимент');return}if(!await askConfirm('Обучение остановлено? Сжать журналы эксперимента без потери истории?'))return;if(!canMutate()||run!==application.selected)return;try{const d=await api('/api/storage/'+encodeURIComponent(run)+'/compact',{method:'POST'});toast('Безопасное сжатие выполнено: '+num(d.result.saved_bytes/1048576,1)+' МБ освобождено');await loadAnalysis()}catch(e){toast('Сжатие: '+e.message)}};
 
 
 async function loadAgentLab(run){
-  const area=$('agent-results'),health=$('agent-training-health');if(!area||!health)return;
+  const epoch=selectionEpoch,area=$('agent-results'),health=$('agent-training-health');if(!area||!health)return;
   try{
     const data=await api('/api/agents/'+encodeURIComponent(run));
-    if(application.selected!==run||application.screen!=='agents')return;const status=data.process||{};
+    if(selectionEpoch!==epoch||application.selected!==run||application.screen!=='agents')return;const status=data.process||{};
     let text=['aggressive','defender','phantom'].map(name=>{
       const report=data.reports?.[name]||{}, file=name+'.pt';
       return `<div class="diagnostic-item"><strong>${name==='aggressive'?'Aggressive':name==='defender'?'Defender':'Фантом-X23'} · ${data.models?.[file]?'Checkpoint создан':'Пока не обучен'}</strong><p>${esc(report.status||'Нет отчёта')} · примеров ${fmt(report.positions||0)} · holdout ${num(report.best?.loss??report.best?.nll,4)}${report.best?' · '+(name==='phantom'?'book top1 ':'teacher top1 ')+num(100*(report.best.teacher_top1??report.best.policy_top1??0),1)+'%':''}</p></div>`;
@@ -405,7 +405,7 @@ async function loadAgentLab(run){
     area.innerHTML=text;
     const h=data.health||{};
     health.innerHTML=`<div class="diagnostic-item"><strong>Контроль PPO · ${fmt(h.iterations)} последних итераций</strong><p>Ничьи: ${h.draw_share!=null?num(100*h.draw_share,1)+'%':'—'} · Остановки по KL: ${h.kl_early_stop_share!=null?num(100*h.kl_early_stop_share,1)+'%':'—'} · arena: ${h.arena_score_mean!=null?num(100*h.arena_score_mean,1)+'%':'—'}</p>${(h.warnings||[]).map(w=>'<p>⚠ '+esc(w)+'</p>').join('')}</div>`;
-  }catch(error){if(application.selected===run&&application.screen==='agents')area.textContent='Agent Lab: '+error.message}
+  }catch(error){if(selectionEpoch===epoch&&application.selected===run&&application.screen==='agents')area.textContent='Agent Lab: '+error.message}
 }
 
 async function trainSpecialist(profile){

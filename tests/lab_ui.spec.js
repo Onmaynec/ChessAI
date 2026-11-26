@@ -97,3 +97,11 @@ test('automatic reconnect without reloading',async({page})=>{
  await page.goto(root);await expect(page.locator('#sync-label')).toContainText('Нет связи');await expect(page.locator('#open-config')).toBeDisabled();
  await expect(page.locator('#sync-label')).toContainText('Локальные данные',{timeout:15000});await expect(page.locator('#open-config')).toBeEnabled();
 });
+
+test('unchanged polling retains recent row',async({page})=>{
+ const fixture={runs:[{id:'r1',name:'r1'}],selected:'r1',process:{active:true,run:'r1'},state:{status:'running'},metrics:[],games:[{game_id:1,iteration:1,result:'*',plies:1}],log:[],file_warnings:[]};
+ await page.route('**/api/overview*',r=>r.fulfill({json:fixture}));await page.goto(root);
+ const button=page.locator('#recent-games .view-game');await expect(button).toBeVisible();await button.evaluate(el=>el.dataset.identityProbe='keep');
+ const response=page.waitForResponse(r=>r.url().includes('/api/overview'));await page.locator('#reload').click();await response;
+ await expect(button).toHaveAttribute('data-identity-probe','keep');
+});

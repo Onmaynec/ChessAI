@@ -222,7 +222,6 @@ def launch(run_id: str, cfg: dict, resume: bool = False):
     if not engine.is_file():
         raise HTTPException(409, "Chess engine not compiled. Run scripts/build_windows.bat first")
     path = RUNS / run_id
-    path.mkdir(parents=True,exist_ok=True)
     cmd = [sys.executable, "-m", "neural.selfplay", "--engine", str(engine.resolve()),
            "--out", str(path.resolve())]
     fields = {"iterations":"iterations", "games_per_iteration":"games-per-iteration",
@@ -246,6 +245,7 @@ def launch(run_id: str, cfg: dict, resume: bool = False):
         status = process_status()
         if status['active']:
             raise HTTPException(409, f"Training already running: {status['run']}")
+        path.mkdir(parents=True,exist_ok=True)
         if resume:
             (path / 'stop_requested').unlink(missing_ok=True)
         log = (path / 'console.log').open('a', encoding='utf-8')

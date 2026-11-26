@@ -30,7 +30,7 @@
       <div class="top-actions"><button class="button subtle command-trigger" id="command-open" title="Командное меню"><span>Поиск</span> <kbd>Ctrl K</kbd></button>
         <span class="sync pending"><i id="live-dot"></i><span id="sync-label">Ожидание данных</span></span>
         <button class="button subtle" id="reload" title="Обновить сейчас">↻ <span>Обновить</span></button>
-        <button class="button primary" id="open-config">＋ Новое обучение</button>
+        <button class="button primary" id="open-config" disabled>＋ Новое обучение</button>
       </div>
     </header>
     <main id="main-workspace" tabindex="-1">
@@ -42,7 +42,7 @@
         </div>
         <div class="training-summary"><div class="run-banner">
           <div class="banner-left"><span id="banner-symbol" class="banner-icon" aria-hidden="true">◎</span><div><div class="banner-overline">ТЕКУЩЕЕ СОСТОЯНИЕ</div><div class="banner-title" id="run-title">Обучение ещё не запускалось</div><div class="banner-sub" id="run-detail">Создайте первый эксперимент, чтобы увидеть реальные показатели.</div></div></div>
-          <div class="banner-controls"><span class="status-badge" id="status-badge">НЕ ЗАПУЩЕНО</span><button id="stop-btn" class="button danger hidden">Остановить после итерации</button><button id="resume-btn" class="button secondary hidden">Продолжить обучение</button></div>
+          <div class="banner-controls"><span class="status-badge" id="status-badge">НЕ ЗАПУЩЕНО</span><button id="stop-btn" disabled class="button danger hidden">Остановить после итерации</button><button id="resume-btn" disabled class="button secondary hidden">Продолжить обучение</button></div>
         </div>
         <div class="progress-wrap"><div class="progress-title"><span>Прогресс эксперимента</span><strong id="progress-text">— / — итераций</strong></div><div class="progress-track" role="progressbar" aria-label="Завершённые итерации" aria-valuemin="0" aria-valuemax="100"><div id="progress-fill" class="progress-fill"></div></div><div class="progress-details"><span id="phase-label">—</span><span id="progress-pct">—</span></div></div>
         </div><div class="metrics" id="metrics-cards">
@@ -65,7 +65,7 @@
       <section class="panel"><div class="panel-header"><div><div class="section-eyebrow">СПИСОК ПАРТИЙ</div><h2>Игровые записи</h2></div><span id="games-count" class="subtle-count">Последние 50</span></div><div class="table-scroll"><table><thead><tr><th>ПАРТИЯ</th><th>ИТЕРАЦИЯ</th><th>РЕЗУЛЬТАТ</th><th>ПРИЧИНА</th><th>ПОЛУХОДОВ</th><th></th></tr></thead><tbody id="games-list"><tr><td colspan="6" class="table-empty">Нет данных</td></tr></tbody></table></div><div class="table-bottom">Показаны последние записи выбранного типа. Полные данные сохранены в папке runs.</div></section>
       </section>
 
-      <section class="screen hidden" id="screen-runs"><div class="page-heading"><div><div class="eyebrow">ЭКСПЕРИМЕНТЫ / УПРАВЛЕНИЕ</div><h1>История запусков</h1><p class="lead">Каждый эксперимент хранится отдельно: настройки, веса, партии и метрики.</p></div><button class="button primary" id="runs-new">＋ Создать запуск</button></div><div class="runs-grid" id="run-list"><div class="panel empty-panel">Пока нет экспериментов.</div></div><section class="panel console-panel"><div class="panel-header"><div><div class="section-eyebrow">ТРАНСЛЯЦИЯ ИЗ ПРОЦЕССА</div><h2>Журнал выполнения</h2></div><span class="subtle-count">последние строки</span></div><div class="log-tools"><input id="log-search" type="search" placeholder="Поиск по загруженным строкам" aria-label="Поиск в журнале"><label><input id="log-pause" type="checkbox"> Приостановить просмотр</label><button class="button subtle" id="log-copy">Копировать</button></div><pre id="console-output" tabindex="0">Выберите эксперимент.</pre></section></section>
+      <section class="screen hidden" id="screen-runs"><div class="page-heading"><div><div class="eyebrow">ЭКСПЕРИМЕНТЫ / УПРАВЛЕНИЕ</div><h1>История запусков</h1><p class="lead">Каждый эксперимент хранится отдельно: настройки, веса, партии и метрики.</p></div><button class="button primary" id="runs-new" disabled>＋ Создать запуск</button></div><div class="runs-grid" id="run-list"><div class="panel empty-panel">Пока нет экспериментов.</div></div><section class="panel console-panel"><div class="panel-header"><div><div class="section-eyebrow">ТРАНСЛЯЦИЯ ИЗ ПРОЦЕССА</div><h2>Журнал выполнения</h2></div><span class="subtle-count">последние строки</span></div><div class="log-tools"><input id="log-search" type="search" placeholder="Поиск по загруженным строкам" aria-label="Поиск в журнале"><label><input id="log-pause" type="checkbox"> Приостановить просмотр</label><button class="button subtle" id="log-copy">Копировать</button></div><pre id="console-output" tabindex="0">Выберите эксперимент.</pre></section></section>
 
       <section class="screen hidden" id="screen-analysis">
         <div class="page-heading"><div><div class="eyebrow">КАЧЕСТВО / ПРЕЕМСТВЕННОСТЬ / ДИАГНОСТИКА</div><h1>Метрики обучения</h1><p class="lead">Что говорят реальные партии и статистика. Оценка уверенности, потерянные партии, сохранённые веса и контрольные матчи.</p></div><button class="button subtle" id="analysis-reload">↻ Перепроверить</button></div>
