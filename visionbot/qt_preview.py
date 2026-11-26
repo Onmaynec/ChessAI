@@ -54,18 +54,21 @@ def make_controller(messages=(), fixture=False):
             journal.append(event)
     return controller, journal
 
-def create_engine(controller, journal, source):
+def create_engine(controller, journal, source, preferences_path=None):
     from PySide6.QtCore import QUrl
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuickControls2 import QQuickStyle
     QQuickStyle.setStyle('Basic')
     from .qt_viewmodel import VisionViewModel
+    from .qt_workspace import WorkspaceModel
     from . import design
     engine = QQmlApplicationEngine()
     model = VisionViewModel(controller, engine)
     model.set_journal(journal)
     context = engine.rootContext()
     context.setContextProperty('visionModel', model)
+    workspace = WorkspaceModel(preferences_path, engine)
+    context.setContextProperty('workspaceModel', workspace)
     context.setContextProperty('sourceLabel', source)
     context.setContextProperty('appVersion', (ROOT/'VERSION').read_text(encoding='utf-8').strip())
     context.setContextProperty('theme', {
@@ -84,6 +87,7 @@ def main():
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--fixture', action='store_true')
     group.add_argument('--replay', type=Path, help='Local UTF-8 raw telemetry / text lines; no live connection')
+    parser.add_argument('--no-save', action='store_true', help='Use temporary in-memory UI preferences')
     args = parser.parse_args()
     try:
         from PySide6.QtGui import QGuiApplication
@@ -96,7 +100,8 @@ def main():
     controller, journal = make_controller(messages, args.fixture)
     source = 'QA FIXTURE' if args.fixture else 'LOCAL REPLAY' if args.replay else 'OFFLINE / IDLE'
     app = QGuiApplication([])
-    engine, model = create_engine(controller, journal, source)
+    preferences_path = None if args.no_save or args.fixture else ROOT/'config'/'vision_qt_workspace.json'
+    engine, model = create_engine(controller, journal, source, preferences_path)
     if not engine.rootObjects():
         return 1
     return app.exec()
