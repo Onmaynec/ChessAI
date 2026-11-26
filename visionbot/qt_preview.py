@@ -30,9 +30,17 @@ def replay_messages(path: Path) -> list[str]:
 def fixture_messages() -> list[str]:
     return ['QA FIXTURE: synthetic local preview, no running session',
             analysis_event({'mode':'external_uci','uci_score':{'kind':'cp','value':32},
-                            'search_depth':12,'search_time_s':0.24},
+                            'search_depth':12,'search_time_s':0.24,
+                             'illustrative_line':['e2e4','e7e5'],'line_kind':'searched_pv',
+                             'candidates':[{'move':'d2d4','cp':20},{'move':'g1f3','cp':12}]},
                            move='e2e4',fen='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
                            ply=0,value=0.),
+            analysis_event({'mode':'external_uci','uci_score':{'kind':'cp','value':32},
+                            'search_depth':12,'search_time_s':0.24,
+                            'illustrative_line':['e7e5','g1f3'],'line_kind':'searched_pv',
+                            'candidates':[{'move':'c7c5','cp':25},{'move':'e7e6','cp':10}]},
+                           move='e7e5',fen='rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1',
+                           ply=1,value=0.),
             'QA FIXTURE: end of sample']
 
 def make_controller(messages=(), fixture=False):
