@@ -10,7 +10,7 @@ Button {
     padding: 12
     hoverEnabled: true
     font.family: theme.font
-    font.pixelSize: 13
+    font.pixelSize: theme.typeScale.body
     font.weight: primary ? Font.DemiBold : Font.Normal
     contentItem: Text {
         text: control.text
@@ -22,8 +22,9 @@ Button {
     }
     background: Rectangle {
         radius: theme.radius
-        color: !control.enabled ? theme.panel : control.primary ? (control.down || control.hovered ? theme.hover : theme.accent) : control.selected || control.down || control.hovered ? theme.active : theme.field
-        border.width: 1
+        color: !control.enabled ? theme.panel : control.primary ? (control.down || control.hovered ? theme.hover : theme.accent) : control.selected || control.down ? theme.active : control.hovered ? theme.surfaceHover : theme.field
+        border.width: control.activeFocus ? 2 : 1
         border.color: control.activeFocus ? theme.accent : control.selected ? theme.muted : theme.border
+        Behavior on color { enabled: !workspaceModel.reducedMotion; ColorAnimation { duration: theme.motion.fast } }
     }
 }
