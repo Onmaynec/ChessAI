@@ -7,15 +7,10 @@ from tkinter import messagebox
 from .analysis_view import arrows, geometry_parts, line_moves, report_sections, square_xy
 from .telemetry import rectangles_overlap
 
-BG='#101116'
-PANEL='#171820'
-FIELD='#20212b'
-TEXT='#f2f2f7'
-MUTED='#a5a9bb'
-ACCENT='#7154e8'
-GREEN='#52d79a'
-RED='#ff8585'
-BORDER='#303341'
+from .design import (BG, PANEL, FIELD, TEXT, MUTED, ACCENT, ACTIVE, TRACK,
+                     GREEN, RED, BORDER, WARNING, BOARD_LIGHT, BOARD_DARK,
+                     FONT, MONO, RADIUS, button_style)
+
 NAMES={
     'control':('Управление','Control',(360,370)),
     'log':('Журнал сессии','Session log',(470,310)),
@@ -198,7 +193,7 @@ class OverlayWindow:
             x=max(0,sw-round(width*scale)-35-offset);y=min(65+offset,max(0,sh-round(height*scale)-45))
         self.win.geometry(f'{width}x{height}+{x}+{y}')
         self.win.attributes('-alpha',self.alpha.get());self.win.attributes('-topmost',self.top.get())
-        header=self.ctk.CTkFrame(self.win,fg_color=PANEL,corner_radius=9,border_width=1,border_color=BORDER)
+        header=self.ctk.CTkFrame(self.win,fg_color=PANEL,corner_radius=RADIUS,border_width=1,border_color=BORDER)
         header.pack(fill='x',padx=8,pady=(8,4))
         grip=self.label(header,manager.name(key),size=15,bold=True)
         grip.pack(side='left',padx=9,pady=5)
@@ -209,10 +204,10 @@ class OverlayWindow:
         prefs.pack(fill='x',padx=10,pady=(0,4))
         self.label(prefs,self.tr('Прозрачность','Opacity'),size=10,color=MUTED).pack(side='left',padx=(0,4))
         self.ctk.CTkSlider(prefs,from_=.55,to=1,variable=self.alpha,command=self.change_alpha,width=90,height=13,
-                           progress_color=ACCENT,button_color=ACCENT).pack(side='left',fill='x',expand=True)
+                           progress_color=TRACK,button_color=ACCENT).pack(side='left',fill='x',expand=True)
         self.ctk.CTkSwitch(prefs,text=self.tr('Поверх','On top'),variable=self.top,command=self.change_top,
-                           font=('Segoe UI',10),switch_width=30,switch_height=16,width=68,progress_color=ACCENT).pack(side='right',padx=5)
-        self.body=self.ctk.CTkFrame(self.win,fg_color=PANEL,corner_radius=9,border_width=1,border_color=BORDER)
+                           font=(FONT,10),switch_width=30,switch_height=16,width=68,progress_color=TRACK).pack(side='right',padx=5)
+        self.body=self.ctk.CTkFrame(self.win,fg_color=PANEL,corner_radius=RADIUS,border_width=1,border_color=BORDER)
         self.body.pack(fill='both',expand=True,padx=8,pady=(0,8))
         getattr(self,'build_'+key)()
         self.win.deiconify()
@@ -264,14 +259,14 @@ class OverlayWindow:
         self._resize_job=self.win.after(100,self.draw_board)
 
     def label(self,parent,text='',size=12,bold=False,color=TEXT,variable=None):
-        kw={'font':('Segoe UI',size,'bold' if bold else 'normal'),'text_color':color,'anchor':'w'}
+        kw={'font':(FONT,size,'bold' if bold else 'normal'),'text_color':color,'anchor':'w'}
         if variable is None:kw['text']=text
         else:kw['textvariable']=variable
         return self.ctk.CTkLabel(parent,**kw)
 
     def button(self,parent,text,command,width=90,primary=False):
-        return self.ctk.CTkButton(parent,text=text,command=command,width=width,height=30,corner_radius=7,
-            fg_color=ACCENT if primary else FIELD,hover_color='#866cf4' if primary else '#353447',text_color=TEXT)
+        return self.ctk.CTkButton(parent,text=text,command=command,width=width,
+                                  **button_style(primary))
 
     def row(self,parent=None):
         row=self.ctk.CTkFrame(parent or self.body,fg_color='transparent')
@@ -279,16 +274,16 @@ class OverlayWindow:
 
     def menu(self,parent,values,command,default):
         w=self.ctk.CTkOptionMenu(parent,values=values,command=command,fg_color=FIELD,button_color=BORDER,
-                                button_hover_color=ACCENT,dropdown_fg_color=PANEL,dropdown_hover_color=ACCENT,
-                                dynamic_resizing=False,height=28,width=100)
+                                button_hover_color=ACTIVE,dropdown_fg_color=PANEL,dropdown_hover_color=ACTIVE,
+                                dropdown_text_color=TEXT,text_color=TEXT,dynamic_resizing=False,height=30,width=100)
         w.set(default);w.pack(side='left',fill='x',expand=True,padx=2);return w
 
     def text(self):
-        t=self.ctk.CTkTextbox(self.body,fg_color='#13141b',text_color=TEXT,font=('Segoe UI',12),
+        t=self.ctk.CTkTextbox(self.body,fg_color=FIELD,text_color=TEXT,font=(MONO,12),
                               wrap='word',state='disabled',corner_radius=6)
         t.pack(fill='both',expand=True,padx=8,pady=7)
-        for tag,color,font in [('heading','#b7a5ff',('Segoe UI',13,'bold')),('info',TEXT,('Segoe UI',12)),
-                               ('analysis','#c4b8ff',('Segoe UI',12)),('move',GREEN,('Segoe UI',12)),('error',RED,('Segoe UI',12))]:
+        for tag,color,font in [('heading',MUTED,(FONT,13,'bold')),('info',TEXT,(FONT,12)),
+                               ('analysis',TEXT,(FONT,12)),('move',GREEN,(FONT,12)),('error',RED,(FONT,12))]:
             t.tag_config(tag,foreground=color)
             # CTkTextbox disallows custom tag font scaling on some releases.
         return t
@@ -303,7 +298,7 @@ class OverlayWindow:
         self.label(self.body,variable=self.app.model_status,color=MUTED).pack(anchor='w',padx=10)
         r=self.row()
         for title,var in [(self.tr('Ход','Move'),self.app.move_text),(self.tr('Оценка','Score'),self.app.eval_text),(self.tr('Глубина','Depth'),self.app.depth_text)]:
-            c=self.ctk.CTkFrame(r,fg_color=FIELD,corner_radius=7);c.pack(side='left',fill='x',expand=True,padx=2)
+            c=self.ctk.CTkFrame(r,fg_color=FIELD,corner_radius=RADIUS);c.pack(side='left',fill='x',expand=True,padx=2)
             self.label(c,title,size=10,color=MUTED).pack(anchor='w',padx=5)
             self.label(c,variable=var,size=17,bold=True).pack(anchor='w',padx=5)
         r=self.row()
@@ -330,14 +325,14 @@ class OverlayWindow:
         def select(v):self.log_filter.set(names[v]);self.signature=None;self.refresh()
         self.menu(row,list(names),select,next(iter(names)))
         self.follow=tk.BooleanVar(master=self.win,value=True)
-        self.ctk.CTkSwitch(row,text=self.tr('Следить','Follow'),variable=self.follow,progress_color=ACCENT,
-                           font=('Segoe UI',11),width=80).pack(side='right')
+        self.ctk.CTkSwitch(row,text=self.tr('Следить','Follow'),variable=self.follow,progress_color=TRACK,
+                           font=(FONT,11),width=80).pack(side='right')
         self.output=self.text()
 
     def build_analysis(self):
         r=self.row()
         self.label(r,variable=self.app.move_text,size=21,bold=True).pack(side='left',padx=4)
-        self.label(r,variable=self.app.eval_text,size=18,bold=True,color='#b7a5ff').pack(side='right',padx=4)
+        self.label(r,variable=self.app.eval_text,size=18,bold=True,color=MUTED).pack(side='right',padx=4)
         self.output=self.text()
 
     def build_console(self):self.output=self.text()
@@ -397,14 +392,14 @@ class OverlayWindow:
         for y in range(8):
             for x in range(8):
                 self.canvas.create_rectangle(ox+x*s,oy+y*s,ox+(x+1)*s,oy+(y+1)*s,outline='',
-                                             fill='#b3b2c5' if (x+y)%2==0 else '#696b83')
+                                             fill=BOARD_LIGHT if (x+y)%2==0 else BOARD_DARK)
                 p=ranks[7-y if black else y][7-x if black else x] if ranks else '.'
                 if p in GLYPHS:
-                    self.canvas.create_text(ox+(x+.5)*s,oy+(y+.5)*s,text=GLYPHS[p],fill='white' if p.isupper() else '#171820',
+                    self.canvas.create_text(ox+(x+.5)*s,oy+(y+.5)*s,text=GLYPHS[p],fill='white' if p.isupper() else BG,
                                             font=('Segoe UI Symbol',max(9,int(s*.75))))
         for x in range(8):
-            self.canvas.create_text(ox+(x+.5)*s,oy+8*s+7,text=('hgfedcba' if black else 'abcdefgh')[x],fill=MUTED,font=('Segoe UI',9))
-            self.canvas.create_text(ox-7,oy+(x+.5)*s,text=str(x+1 if black else 8-x),fill=MUTED,font=('Segoe UI',9))
+            self.canvas.create_text(ox+(x+.5)*s,oy+8*s+7,text=('hgfedcba' if black else 'abcdefgh')[x],fill=MUTED,font=(FONT,9))
+            self.canvas.create_text(ox-7,oy+(x+.5)*s,text=str(x+1 if black else 8-x),fill=MUTED,font=(FONT,9))
         markings=[]
         if ranks and not current:
             if index==0:markings=arrows(event,self.layer.get()=='all')
@@ -415,11 +410,11 @@ class OverlayWindow:
                     if isinstance(trap,dict) and uci(trap.get('bait')):markings.append((trap['bait'],'trap'))
         for move,kind in markings:
             x1,y1=square_xy(move[:2],black);x2,y2=square_xy(move[2:4],black)
-            color=GREEN if kind=='chosen' else '#a78bfa' if kind=='alternative' else RED if kind=='trap' else '#e9b963'
+            color=GREEN if kind=='chosen' else TEXT if kind=='alternative' else RED if kind=='trap' else WARNING
             self.canvas.create_rectangle(ox+x2*s+2,oy+y2*s+2,ox+(x2+1)*s-2,oy+(y2+1)*s-2,outline=color,width=2)
             self.canvas.create_line(ox+(x1+.5)*s,oy+(y1+.5)*s,ox+(x2+.5)*s,oy+(y2+.5)*s,fill=color,
                                     width=max(2,int(s*.10)),dash=(4,3) if kind=='trap' else (),arrow='last',arrowshape=(max(6,int(s*.30)),max(7,int(s*.36)),max(3,int(s*.16))))
-        if not ranks:self.canvas.create_text(width/2,height/2,text=self.tr('Нет позиции','No position'),fill=TEXT,font=('Segoe UI',12),tags='empty')
+        if not ranks:self.canvas.create_text(width/2,height/2,text=self.tr('Нет позиции','No position'),fill=TEXT,font=(FONT,12),tags='empty')
         self.caption.set(self.tr('Последняя позиция из событий','Last reported position') if current else self.tr('Снимок расчёта · ловушки условны','Analysis snapshot · traps conditional'))
         self.step_text.set('—' if current else f'{index}/{len(moves)}'+(' · '+moves[index-1] if index else ''))
         self.prev.configure(state='normal' if index>0 and not current else 'disabled')
