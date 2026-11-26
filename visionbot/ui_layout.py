@@ -39,6 +39,8 @@ class ScrollViewport(tk.Frame):
         self.body = tk.Frame(self.canvas, bg=background, bd=0, highlightthickness=0)
         self.window = self.canvas.create_window(0, 0, window=self.body, anchor='nw')
         self._width = None
+        self._requested_width = None
+        self._width_job = None
         self._region = None
         self._pending = None
         self._restore_job = None
@@ -48,9 +50,18 @@ class ScrollViewport(tk.Frame):
         self.winfo_toplevel().bind('<MouseWheel>', self._wheel, add='+')
 
     def _resize(self, event):
-        if event.width != self._width:
-            self._width = event.width
-            self.canvas.itemconfigure(self.window, width=max(1, event.width))
+        # Native window dragging can emit hundreds of Configure events.
+        # Coalesce the expensive subtree reflow, but keep the latest width.
+        self._requested_width = max(1,event.width)
+        if self._requested_width != self._width and self._width_job is None:
+            self._width_job = self.after(80,self._apply_width)
+        self._schedule_region()
+
+    def _apply_width(self):
+        self._width_job = None
+        if self._requested_width != self._width:
+            self._width = self._requested_width
+            self.canvas.itemconfigure(self.window,width=self._width)
         self._schedule_region()
 
     def _schedule_region(self, event=None):
@@ -92,6 +103,9 @@ class ScrollViewport(tk.Frame):
         self.restore_scroll(0)
 
     def destroy(self):
+        if self._width_job is not None:
+            self.after_cancel(self._width_job)
+            self._width_job = None
         if self._pending is not None:
             self.after_cancel(self._pending)
             self._pending = None
