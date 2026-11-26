@@ -222,7 +222,16 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         contentItem: ColumnLayout {
                             spacing: 10
-                            UiToggle { text: "Поверх окон"; checked: root.pinned; enabled: !sessionModel.busy; onToggled: { root.pinned=checked; workspaceModel.setPinned("main",checked) }; Layout.fillWidth: true }
+                            UiToggle {
+                                text: "Поверх окон"
+                                checked: root.pinned
+                                enabled: !sessionModel.busy
+                                onToggled: {
+                                    root.pinned = checked
+                                    workspaceModel.setPinned("main", checked)
+                                }
+                                Layout.fillWidth: true
+                            }
                             UiToggle { text: "Уменьшить анимации"; checked: workspaceModel.reducedMotion; onToggled: workspaceModel.setReducedMotion(checked); Layout.fillWidth: true }
                             Label { text: "Размер текста"; color: theme.muted }
                             RebornSelect { model: ["100%","115%","130%"]; property var scales: [100,115,130]; currentIndex: scales.indexOf(workspaceModel.textScale); onActivated: workspaceModel.setTextScale(scales[currentIndex]); Layout.fillWidth: true }
