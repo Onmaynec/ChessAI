@@ -130,6 +130,8 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
                             Layout.preferredWidth: 560
+                            Layout.row: root.wide ? 0 : 1
+                            Layout.column: 0
                             Layout.alignment: Qt.AlignTop
                             spacing: 12
                             PositionPanel { Layout.fillWidth: true; Layout.minimumWidth: 0 }
@@ -139,6 +141,8 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
                             Layout.preferredWidth: 360
+                            Layout.row: 0
+                            Layout.column: root.wide ? 1 : 0
                             Layout.alignment: Qt.AlignTop
                             padding: 16
                             contentItem: ColumnLayout {
@@ -154,7 +158,7 @@ ApplicationWindow {
                                     onActivated: rebornModel.selectRun(currentText)
                                     Layout.fillWidth: true
                                 }
-                                Label { text: "Checkpoint"; color: theme.muted }
+                                Label { text: "Checkpoint"; color: theme.muted; Layout.fillWidth: true }
                                 RebornSelect {
                                     objectName: "modelPicker"
                                     model: rebornModel.models
@@ -192,7 +196,7 @@ ApplicationWindow {
                         padding: 14
                         contentItem: ColumnLayout {
                             Label { text: "Локальная телеметрия"; color: theme.text; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                            Label { text: rebornModel.source; textFormat: Text.PlainText; color: theme.muted; wrapMode: Text.WrapAnywhere; Layout.fillWidth: true }
+                            Label { text: sessionModel.active ? "LIVE / разрешённый компьютерный тест" : rebornModel.source; textFormat: Text.PlainText; color: theme.muted; wrapMode: Text.WrapAnywhere; Layout.fillWidth: true }
                             RowLayout {
                                 Layout.fillWidth: true
                                 UiButton { text: "Открыть файл"; enabled: !sessionModel.busy; onClicked: replayDialog.open(); Layout.fillWidth: true }
