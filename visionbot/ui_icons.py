@@ -1,7 +1,8 @@
 """Small, crisp line icons. Pillow is already a Vision dependency."""
 from PIL import Image, ImageDraw
+from .design import MUTED
 
-def icon_image(ctk, name, color='#c6c6d5', size=20):
+def icon_image(ctk, name, color=MUTED, size=20):
     image=Image.new('RGBA',(96,96))
     draw=ImageDraw.Draw(image)
     def line(points):
