@@ -31,3 +31,10 @@ test('mobile layout and advanced config',async({page})=>{
  await expect(page.locator('#c-workers')).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
 });
+
+test('disconnect is distinguished from training state',async({page})=>{
+ await page.route('**/api/overview',route=>route.abort());
+ await page.goto(root);
+ await expect(page.locator('#sync-label')).toContainText('Нет связи');
+ await expect(page.locator('#open-config')).toBeDisabled();
+});

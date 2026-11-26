@@ -21,7 +21,7 @@ CSS custom properties define neutral surfaces, borders, text, semantic colors, s
 
 ## Start and test
 Run START_CHESS_AI.bat as before; open http://127.0.0.1:8765. No frontend build step. Do not expose unauthenticated local API to the internet.
-Draft: browser and real API regression checks NOT executed in authoring environment. No screenshots or score claimed.
+Draft: browser and real API regression checks NOT executed in authoring environment. No screenshots or score claimed. Second iteration replaced resume prompts and destructive confirmations with native accessible styled dialogs, added global selected-run context, and cleared no-run diagnostic views. JavaScript syntax and DOM ID references checked statically.
 Use tests/lab_ui.spec.js with Playwright in a disposable checkout. Test mocks are isolated browser route fixtures; never run a real training or compaction action in the UI test.
 Manual matrix: first launch; stopped/running/failed; self-play/optimization/arena; disconnect/reconnect; CUDA absent; stale files; long history; logs; config and advanced fields; replay; 1920x1080, 1366x768, 1280x720, 1024x768, 390x844; 200% zoom; keyboard focus, dropdowns, reduced motion. Verify before merge.
-Known limits: native resume prompts remain; no OS telemetry beyond supplied fields; existing server tail limits; no full chart zoom/pan; local fonts not bundled; no independent visual/accessibility/performance score.
+Known limits: no OS telemetry beyond supplied fields; existing server tail limits; no full chart zoom/pan; local fonts not bundled; no independent visual/accessibility/performance score.

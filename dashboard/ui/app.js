@@ -21,7 +21,7 @@ function graph(container, values, {accent='#fff',height=245,unit='',ymin=null,it
   const signature=JSON.stringify([rows,accent,height,ymin]);
   if(graphState.get(container)?.signature===signature)return;
   graphState.set(container,{signature});
-  if(!valid.length){container.innerHTML='<div class="empty-chart">Для графика пока недостаточно данных.</div>';return}
+  if(!valid.length){container.innerHTML='<div class="empty-chart">Для графика пока недостаточно данных.</div>';container.removeAttribute('tabindex');container.removeAttribute('aria-label');container.onfocus=container.onblur=container.onkeydown=null;return}
   const w=780,h=height,l=64,r=20,t=25,b=30;
   let lo=ymin??Math.min(...valid.map(x=>x.y)),hi=Math.max(...valid.map(x=>x.y));
   const spread=Math.max((hi-lo)*.12,Math.abs(hi)*.01,.000001);
@@ -48,7 +48,7 @@ function renderOverview(d){
   const old=picker.value;
   const options=d.runs.length ? d.runs.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('') : '<option value="">Нет запусков</option>';
   if(picker.dataset.options!==options){picker.innerHTML=options;picker.dataset.options=options;}
-  application.selected=d.selected||null; if(picker.value!==(d.selected||''))picker.value=d.selected||'';
+  application.selected=d.selected||null; if(picker.value!==(d.selected||''))picker.value=d.selected||'';$('global-run').textContent=d.selected||'Эксперимент не выбран';$('global-run').title=d.selected||'Эксперимент не выбран';
   const st=d.state||{},c=st.counters||{},meta=d.metadata||{},cfg=meta.config||{};
   const state=st.status||'unknown';
   $('overview-device').textContent=st.device||'—';$('overview-iteration').textContent=fmt(st.iteration);$('overview-best').textContent=d.best?.best_iteration!=null?'#'+d.best.best_iteration:(d.best?.origin||'—');$('overview-process').textContent=d.process?.active?(d.process.run||'Запущен'):'Нет активного';$('open-config').disabled=!!d.process?.active;$('runs-new').disabled=!!d.process?.active;
@@ -111,7 +111,7 @@ function renderRuns(){const d=application.overview;if(!d)return;
 
 let analysisBusy=false;
 async function loadAnalysis(){if(analysisBusy)return;
-  if(!application.selected){$('analysis-warnings').textContent='Выберите или создайте эксперимент.';return}
+  if(!application.selected){for(const id of ['analysis-warnings','quality-status','best-status','gpu-info','storage-status','performance-status','evaluation-history','tournament-ranking','agent-results','agent-training-health','color-audit-info','hardware-benchmark-info'])$(id).textContent='Выберите или создайте эксперимент.';for(const id of ['a-finished','a-samples','a-score','a-checkpoint'])$(id).textContent='—';for(const id of ['completion-chart','analysis-value-chart'])graph($(id),[]);$('eval-live').textContent='Нет выбранного эксперимента';return}
   const run=application.selected;analysisBusy=true;
   try{
     const data=await api('/api/analysis?run='+encodeURIComponent(run));
@@ -159,7 +159,7 @@ async function loadAnalysis(){if(analysisBusy)return;
 }
 
 let gamesBusy=false;
-async function loadGames(){if(!application.selected||gamesBusy)return;gamesBusy=true;const run=application.selected;
+async function loadGames(){if(!application.selected){$('games-list').innerHTML='<tr><td colspan="6" class="table-empty">Нет выбранного эксперимента</td></tr>';$('games-count').textContent='—';return}if(gamesBusy)return;gamesBusy=true;const run=application.selected;
   const kind=$('game-kind').value,result=$('game-result').value;
   try{const data=await api('/api/games?'+new URLSearchParams({run,kind,result,limit:'50'}));if(application.selected!==run||$('game-kind').value!==kind||$('game-result').value!==result)return;$('games-count').textContent=`${data.games.length} последних записей`;
   $('games-list').innerHTML=data.games.length?data.games.map(g=>`<tr><td>#${g.game_id}</td><td>${g.iteration}</td><td><span class="result-pill ${classResult(g.result)}">${esc(resultNames[g.result]||g.result)}</span></td><td>${esc(reasonNames[g.reason]||g.reason)}</td><td>${fmt(g.plies)}</td><td><button class="table-button view-game" data-id="${g.game_id}" data-kind="${kind}">Открыть →</button></td></tr>`).join(''):'<tr><td colspan="6" class="table-empty">Записей с таким результатом пока нет</td></tr>';}
@@ -179,22 +179,31 @@ const presets={quick:{iterations:2,games:2,parallel:2,plies:140,temp:1.1,arena:0
 function applyPreset(name){const p=presets[name];if(!p)return;qsa('[data-preset]').forEach(b=>b.classList.toggle('chosen',b.dataset.preset===name));for(const k of Object.keys(p))$('c-'+k).value=p[k]}
 async function startTraining(){const payload={iterations:+$('c-iterations').value,games_per_iteration:+$('c-games').value,parallel:+$('c-parallel').value,max_plies:+$('c-plies').value,temperature:+$('c-temp').value,arena_games:+$('c-arena').value,opening_plies:+$('c-opening').value,league_fraction:+$('c-league').value/100, repetition_penalty:+$('c-repeat').value, target_kl:+$('c-kl').value,bridge_workers:+$('c-workers').value,batch_size:+$('c-batch').value,archive_every:+$('c-archive').value};
   const btn=$('start-training');if(btn.disabled||application.overview?.process?.active)return;const invalid=qsa('#config-overlay input').find(el=>!el.checkValidity());if(invalid){invalid.closest('details')?.setAttribute('open','');invalid.reportValidity();return}btn.disabled=true;$('config-error').textContent='';try{const d=await api('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});application.selected=d.run;configModal(false);navigate('overview');await refresh();toast('Эксперимент запущен: '+d.run)}catch(e){$('config-error').textContent=e.message}finally{btn.disabled=false}}
-async function stopTraining(){if(!application.overview?.process?.active||$('stop-btn').disabled)return;if(!confirm('Остановить обучение после окончания текущей итерации? Результаты сохранятся.'))return;$('stop-btn').disabled=true;try{await api('/api/stop',{method:'POST'});toast('Запрос остановки принят. Текущая итерация завершится.')}catch(e){toast(e.message)}finally{$('stop-btn').disabled=false}}
-async function resumeTraining(){if(!application.selected)return;const text=prompt('Сколько ДОПОЛНИТЕЛЬНЫХ итераций выполнить?', '10');if(text===null)return;const iterations=+text;if(!Number.isSafeInteger(iterations)||iterations<1||iterations>100000){toast('Введите целое число от 1 до 100000');return}const prior=application.overview?.metadata?.config?.max_plies||240;const capText=prompt('Лимит полуходов для новых партий (увеличение помогает завершить больше партий; прежние веса сохранятся):',String(prior));if(capText===null)return;const max_plies=+capText;if(!Number.isSafeInteger(max_plies)||max_plies<8||max_plies>1500){toast('Лимит должен быть целым числом от 8 до 1500');return}const before=application.overview?.metadata?.config?.opening_plies??0;
-  const openingsText=prompt('Дебютное разнообразие: сколько легальных полуходов разыгрывать перед новой партией? 0 = старый режим, 6 = новый:',String(before));
-  if(openingsText===null)return;
-  const opening_plies=+openingsText;
-  if(!Number.isSafeInteger(opening_plies)||opening_plies<0||opening_plies>16){toast('Введите число 0–16');return}
-  const conf=application.overview?.metadata?.config||{};
-  const parallelText=prompt('Одновременные партии на GPU (не больше числа партий/итерацию):',String(conf.parallel??8));
-  if(parallelText===null)return;
-  const parallel=+parallelText;
-  if(!Number.isSafeInteger(parallel)||parallel<1||parallel>64){toast('Введите 1–64');return}
-  const workersText=prompt('Параллельные CPU-процессы Chess Core (для Ryzen 5600 начни с 2):',String(conf.bridge_workers??2));
-  if(workersText===null)return;
-  const bridge_workers=+workersText;
-  if(!Number.isSafeInteger(bridge_workers)||bridge_workers<1||bridge_workers>8){toast('Введите 1–8');return}
-  try{await api('/api/resume/'+encodeURIComponent(application.selected),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({iterations,max_plies,opening_plies,parallel,bridge_workers,archive_every:5})});await refresh();toast('Обучение продолжено')}catch(e){toast(e.message)}}
+async function stopTraining(){if(!application.overview?.process?.active||$('stop-btn').disabled)return;if(!await askConfirm('Остановить обучение после окончания текущей итерации? Результаты сохранятся.'))return;if(!application.overview?.process?.active||application.overview.process.run!==application.selected)return;$('stop-btn').disabled=true;try{await api('/api/stop',{method:'POST'});toast('Запрос остановки принят. Текущая итерация завершится.')}catch(e){toast(e.message)}finally{$('stop-btn').disabled=false}}
+let resumeRun=null;
+function resumeTraining(){
+  if(!application.selected||application.overview?.process?.active||$('resume-btn').disabled)return;
+  resumeRun=application.selected;
+  const cfg=application.overview?.metadata?.config||{};
+  $('resume-context').textContent='Эксперимент: '+resumeRun;
+  $('resume-iterations').value=10;$('resume-plies').value=cfg.max_plies??240;
+  $('resume-openings').value=cfg.opening_plies??0;$('resume-parallel').value=cfg.parallel??8;
+  $('resume-workers').value=cfg.bridge_workers??2;$('resume-error').textContent='';
+  $('resume-dialog').showModal();
+}
+async function submitResume(e){
+  e.preventDefault();const btn=$('resume-submit');if(btn.disabled||!resumeRun)return;
+  if(resumeRun!==application.selected||application.overview?.process?.active){$('resume-error').textContent='Состояние изменилось. Закройте окно и обновите эксперимент.';return}
+  const payload={iterations:+$('resume-iterations').value,max_plies:+$('resume-plies').value,opening_plies:+$('resume-openings').value,parallel:+$('resume-parallel').value,bridge_workers:+$('resume-workers').value,archive_every:5};
+  btn.disabled=true;
+  try{await api('/api/resume/'+encodeURIComponent(resumeRun),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});$('resume-dialog').close();await refresh();toast('Обучение продолжено')}catch(error){$('resume-error').textContent=error.message}finally{btn.disabled=false}
+}
+function askConfirm(message){
+  const dialog=$('confirm-dialog');
+  if(dialog.open)return Promise.resolve(false);
+  $('confirm-message').textContent=message;dialog.returnValue='cancel';
+  return new Promise(resolve=>{dialog.addEventListener('close',()=>resolve(dialog.returnValue==='confirm'),{once:true});dialog.showModal()});
+}
 const pieceGlyph={K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟︎'};
 function expandFen(fen){const rows=fen.split(' ')[0].split('/');if(rows.length!==8)throw Error('FEN: неверное число рядов');return rows.map(row=>{let squares=[];for(const c of row){if(/[1-8]/.test(c))squares.push(...Array(+c).fill('.'));else if(pieceGlyph[c])squares.push(c);else throw Error('Неверный символ FEN')}if(squares.length!==8)throw Error('FEN: неверная длина ряда');return squares})}
 function replayPosition(step){const game=application.replay;if(!game)return;step=Math.max(0,Math.min(step,game.moves.length));application.replayStep=step;
@@ -257,9 +266,9 @@ $('replay-range').oninput=e=>replayPosition(+e.target.value);
 $('replay-first').onclick=()=>replayPosition(0);$('replay-last').onclick=()=>replayPosition(application.replay?.moves.length||0);
 $('replay-next').onclick=()=>replayPosition(application.replayStep+1);$('replay-prev').onclick=()=>replayPosition(application.replayStep-1);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeReplay();configModal(false)}if(application.replay&&e.key==='ArrowRight')replayPosition(application.replayStep+1);if(application.replay&&e.key==='ArrowLeft')replayPosition(application.replayStep-1)});
-async function poll(){try{if(!document.hidden&&!application.overlayOpen&&!application.replay&&!$('command-dialog').open){await refresh();if(application.screen==='games')await loadGames();if(researchScreens.has(application.screen))await loadAnalysis()}}finally{setTimeout(poll,2500)}}
+async function poll(){try{if(!document.hidden&&!application.overlayOpen&&!application.replay&&!$('command-dialog').open&&!$('resume-dialog').open&&!$('confirm-dialog').open){await refresh();if(application.screen==='games')await loadGames();if(researchScreens.has(application.screen))await loadAnalysis()}}finally{setTimeout(poll,2500)}}
 
-$('compact-storage').onclick=async()=>{if(!application.selected){toast('Выберите эксперимент');return}if(!confirm('Обучение остановлено? Сжать журналы эксперимента без потери истории?'))return;try{const d=await api('/api/storage/'+encodeURIComponent(application.selected)+'/compact',{method:'POST'});toast('Безопасное сжатие выполнено: '+num(d.result.saved_bytes/1048576,1)+' МБ освобождено');await loadAnalysis()}catch(e){toast('Сжатие: '+e.message)}};
+$('compact-storage').onclick=async()=>{if(!application.selected){toast('Выберите эксперимент');return}if(!await askConfirm('Обучение остановлено? Сжать журналы эксперимента без потери истории?'))return;try{const d=await api('/api/storage/'+encodeURIComponent(application.selected)+'/compact',{method:'POST'});toast('Безопасное сжатие выполнено: '+num(d.result.saved_bytes/1048576,1)+' МБ освобождено');await loadAnalysis()}catch(e){toast('Сжатие: '+e.message)}};
 
 
 async function loadAgentLab(run){
@@ -280,7 +289,7 @@ async function loadAgentLab(run){
 
 async function trainSpecialist(profile){
   if(!application.selected){toast('Выберите эксперимент');return}
-  if(!confirm('Запустить отдельное обучение '+profile+'? Основные веса и PPO не изменятся.'))return;
+  if(!await askConfirm('Запустить отдельное обучение '+profile+'? Основные веса и PPO не изменятся.'))return;
   try{
     const body={epochs:+$('agent-epochs').value,max_rows:+$('agent-rows').value,batch_size:+$('agent-batch').value,teacher_depth:+$('agent-depth').value};
     await api('/api/agents/'+encodeURIComponent(application.selected)+'/train/'+profile,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -288,17 +297,17 @@ async function trainSpecialist(profile){
   }catch(e){toast('Agent Lab: '+e.message)}
 }
 
-document.addEventListener('click',e=>{
+document.addEventListener('click',async e=>{
   const test=e.target.closest('.agent-evaluate');if(test){
     if(!application.selected){toast('Выберите эксперимент');return}
-    if(!confirm('Запустить 40 контрольных партий '+test.dataset.profile+' против SkillBoost II?'))return;
+    if(!await askConfirm('Запустить 40 контрольных партий '+test.dataset.profile+' против SkillBoost II?'))return;
     api('/api/agents/'+encodeURIComponent(application.selected)+'/evaluate/'+test.dataset.profile,{method:'POST'})
       .then(x=>toast('Независимое сравнение запущено: '+x.filename)).catch(e=>toast(e.message));
     return;
   }
   const btn=e.target.closest('.agent-train');if(btn){trainSpecialist(btn.dataset.profile);return}
   if(e.target.id==='agent-stop'&&application.selected){
-    if(!confirm('Остановить текущую специализацию? Уже сохранённые модели останутся.'))return;
+    if(!await askConfirm('Остановить текущую специализацию? Уже сохранённые модели останутся.'))return;
     api('/api/agents/'+encodeURIComponent(application.selected)+'/stop',{method:'POST'}).then(()=>toast('Запрос остановки отправлен')).catch(e=>toast(e.message));
   }
 });
@@ -317,7 +326,11 @@ try{collapse(localStorage.getItem('lab.sidebar')==='true')}catch(_){}
 $('sidebar-toggle').onclick=()=>collapse(!shell.classList.contains('collapsed'));
 const command=$('command-dialog');
 function commandFilter(){const q=$('command-search').value.toLowerCase();const buttons=qsa('.nav-item').filter(b=>b.title.toLowerCase().includes(q));$('command-results').replaceChildren(...buttons.map(b=>{const el=document.createElement('button');el.className='button subtle';el.textContent=b.title;el.onclick=()=>{command.close();navigate(b.dataset.screen)};return el}));if(!buttons.length)$('command-results').textContent='Нет совпадений'}
-function openCommand(){if(application.overlayOpen||application.replay||command.open)return;command.showModal();$('command-search').value='';commandFilter();$('command-search').focus()}
+function openCommand(){if(application.overlayOpen||application.replay||command.open||$('resume-dialog').open||$('confirm-dialog').open)return;command.showModal();$('command-search').value='';commandFilter();$('command-search').focus()}
 $('command-open').onclick=openCommand;$('command-close').onclick=()=>command.close();$('command-search').oninput=commandFilter;$('command-search').onkeydown=e=>{if(e.key==='Enter')$('command-results').querySelector('button')?.click()};
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openCommand()}});
 poll();
+
+$('resume-form').onsubmit=submitResume;
+for(const id of ['resume-close','resume-cancel'])$(id).onclick=()=>{if(!$('resume-submit').disabled)$('resume-dialog').close()};
+$('resume-dialog').addEventListener('cancel',e=>{if($('resume-submit').disabled)e.preventDefault()});
