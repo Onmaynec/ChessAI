@@ -89,6 +89,9 @@ def create_engine(controller, journal, source, preferences_path=None, *, reborn=
         from .reborn_model import RebornModel
         reborn_model = RebornModel(ROOT, controller, model, engine)
         context.setContextProperty('rebornModel', reborn_model)
+        from .qt_session import QtSession
+        session = QtSession(ROOT, controller, model, reborn_model, engine)
+        context.setContextProperty('sessionModel', session)
     entry = 'Reborn.qml' if reborn else 'Main.qml'
     engine.load(QUrl.fromLocalFile(str(Path(__file__).with_name('qml')/entry)))
     return engine, model
