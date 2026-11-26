@@ -17,7 +17,7 @@ class ReplayTests(unittest.TestCase):
         self.assertFalse(c.session.active)
         self.assertEqual(c.analysis.score, '+32 cp')
         self.assertEqual(c.analysis.depth, 12)
-        self.assertEqual(len(events), 3)
+        self.assertEqual(len(events), 4)
         self.assertEqual(events[1].category, 'analysis')
 
     def test_bounded_replay(self):
@@ -58,11 +58,20 @@ class QmlWorkspaceTests(unittest.TestCase):
                     window.setProperty('page', page)
                     app.processEvents()
                     self.assertEqual(window.property('page'), page)
+            self.assertEqual(model.historyCount, 2)
+            self.assertEqual(model.historyIndex, 1)
+            self.assertEqual(model.boardView['turn'], 'Чёрные')
+            model.goHistory(0)
+            self.assertEqual(model.boardView['move'], 'e2e4')
+            model.selectCandidate('d2d4')
+            self.assertEqual(model.boardView['arrow']['x1'], 3)
+            model.flipBoard()
+            self.assertEqual(model.boardView['cells'][0]['square'], 'h1')
             model.filterJournal('синтетический', 'all')
             self.assertEqual(len(model.journal), 0)
             model.filterJournal('', 'analysis')
-            self.assertEqual(len(model.journal), 1)
-            self.assertEqual(model.journalTotal, 3)
+            self.assertEqual(len(model.journal), 2)
+            self.assertEqual(model.journalTotal, 4)
         finally:
             for window in engine.rootObjects():
                 window.close()
