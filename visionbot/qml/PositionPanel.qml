@@ -8,7 +8,7 @@ Surface {
     readonly property var view: visionModel.boardView
     contentItem: ColumnLayout {
         spacing: 12
-        Label { text: "Позиция перед предложенным ходом"; font.pixelSize: 16; font.weight: Font.DemiBold; color: theme.text; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Label { text: "Позиция перед предложенным ходом"; font.pixelSize: Math.round(16 * workspaceModel.textScale / 100); font.weight: Font.DemiBold; color: theme.text; Layout.fillWidth: true; wrapMode: Text.Wrap }
         Label { text: "Ход: " + panel.view.turn + " · " + panel.view.move; color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
         RowLayout {
             Layout.fillWidth: true
@@ -21,16 +21,17 @@ Surface {
         Chessboard {
             objectName: "chessboard"
             position: panel.view
+            cells: visionModel.boardCells
             black: visionModel.blackOrientation
             Layout.fillWidth: true
             Layout.maximumWidth: 510
-            Layout.preferredHeight: width
+            Layout.preferredHeight: Math.min(510, Math.max(1, panel.availableWidth))
             Layout.alignment: Qt.AlignHCenter
         }
         Label {
             text: panel.view.evaluation.kind === undefined ? "Оценка недоступна" : "Оценка с точки зрения белых: " + (panel.view.evaluation.kind === "mate" ? "M" : "") + (panel.view.evaluation.value > 0 ? "+" : "") + panel.view.evaluation.value + (panel.view.evaluation.kind === "cp" ? " cp" : "")
             color: theme.muted
-            font.pixelSize: 12
+            font.pixelSize: Math.round(12 * workspaceModel.textScale / 100)
             Layout.fillWidth: true
             wrapMode: Text.Wrap
         }
@@ -49,7 +50,7 @@ Surface {
             }
             Rectangle { x: parent.width/2; height: parent.height; width: 1; color: theme.dim }
         }
-        Label { text: "Шкала ±800 cp, не вероятность победы."; color: theme.dim; font.pixelSize: 10; Layout.fillWidth: true; wrapMode: Text.Wrap }
-        Label { text: "Стрелка — предложенный ход, а не подтверждение выполнения."; color: theme.dim; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Label { text: "Шкала ±800 cp, не вероятность победы."; color: theme.dim; font.pixelSize: Math.round(10 * workspaceModel.textScale / 100); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Label { text: "Стрелка — предложенный ход, а не подтверждение выполнения."; color: theme.dim; font.pixelSize: Math.round(11 * workspaceModel.textScale / 100); Layout.fillWidth: true; wrapMode: Text.Wrap }
     }
 }
