@@ -64,7 +64,7 @@ class QmlWorkspaceTests(unittest.TestCase):
                                     for w in app.topLevelWindows()))
             for width in (1200, 800, 560):
                 window.setWidth(width)
-                for page in range(4):
+                for page in range(5):
                     window.setProperty('page', page)
                     app.processEvents()
                     self.assertEqual(window.property('page'), page)
@@ -77,6 +77,17 @@ class QmlWorkspaceTests(unittest.TestCase):
             self.assertEqual(model.boardView['arrow']['x1'], 3)
             model.flipBoard()
             self.assertEqual(model.boardView['cells'][0]['square'], 'h1')
+            from PySide6.QtCore import QObject
+            gallery = window.findChild(QObject,'componentGallery')
+            self.assertIsNotNone(gallery)
+            workspace_model = engine.rootContext().contextProperty('workspaceModel')
+            workspace_model.setReducedMotion(True)
+            app.processEvents()
+            self.assertTrue(workspace_model.reducedMotion)
+            self.assertTrue(gallery.findChild(QObject,'galleryMotionToggle').property('checked'))
+            workspace_model.setReducedMotion(False)
+            app.processEvents()
+            self.assertFalse(gallery.findChild(QObject,'galleryMotionToggle').property('checked'))
             model.filterJournal('синтетический', 'all')
             self.assertEqual(len(model.journal), 0)
             model.filterJournal('', 'analysis')
