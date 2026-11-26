@@ -55,6 +55,7 @@ class QtSession(QObject):
         self._status = 'Ожидание настройки'
         self._busy = False
         self._worker = None
+        self._had_session = False
         self._stop = threading.Event()
         self._journal = deque(maxlen=600)
         self._log_path = None
@@ -215,6 +216,7 @@ class QtSession(QObject):
                         self.controller.submit('ОШИБКА: '+str(exc))
             self._worker=threading.Thread(target=execute,name='VisionQtWorker',daemon=False)
             self._worker.start()
+            self._had_session=True
             self._notice('Запущен разрешённый тест · ESC — остановка')
         except Exception as exc:
             self._notice(exc)
@@ -246,7 +248,7 @@ class QtSession(QObject):
         if self._worker is not None and not self.active:
             self._worker=None
             self._notice('Сессия остановлена')
-        snapshot=SessionSnapshot(active=self.active,stopping=self._stop.is_set(),
+        snapshot=SessionSnapshot(active=self.active,stopping=self._stop.is_set(),had_worker=self._had_session,
             region=self._rect, engine_available=self.catalog.engineAvailable,
             model_available=self.catalog.modelAvailable, model=self.catalog.selectedModel,side=self._side)
         self.controller.update_session(snapshot)
