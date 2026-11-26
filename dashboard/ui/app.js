@@ -17,7 +17,7 @@ const api=async(url,opts={})=>{
 };
 function toast(text){const el=$('toast');el.textContent=text;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4800)}
 const researchScreens = new Set(['analysis','evaluation','models','agents','system']);
-function navigate(screen){if(!$('screen-'+screen))return;const changed=screen!==application.screen;application.screen=screen;savePrefs({screen});qsa('.screen').forEach(e=>e.classList.toggle('hidden',e.id!=='screen-'+screen));qsa('.nav-item').forEach(e=>{const active=e.dataset.screen===screen;e.classList.toggle('selected',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')});$('breadcrumb').textContent={overview:'Обзор обучения',games:'Партии и анализ',analysis:'Диагностика модели',runs:'Эксперименты',guide:'Методика',evaluation:'Evaluation',models:'Модели и checkpoint',agents:'Agent Lab',system:'Ресурсы и данные'}[screen];if(changed){researchAt=gamesAt=null}if(screen==='games')loadGames(true);if(screen==='runs'&&application.overview?.selected===application.selected)renderRuns();if(researchScreens.has(screen))loadAnalysis(true);if(changed)window.scrollTo({top:0,behavior:'instant'})}
+function navigate(screen){if(!$('screen-'+screen))return;const changed=screen!==application.screen;application.screen=screen;savePrefs({screen});qsa('.screen').forEach(e=>e.classList.toggle('hidden',e.id!=='screen-'+screen));qsa('.nav-item').forEach(e=>{const active=e.dataset.screen===screen;e.classList.toggle('selected',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')});$('breadcrumb').textContent={overview:'Обзор обучения',games:'Партии и анализ',analysis:'Диагностика модели',runs:'Эксперименты',guide:'Методика',evaluation:'Evaluation',models:'Модели и checkpoint',agents:'Agent Lab',system:'Ресурсы и данные'}[screen];if(changed){researchAt=gamesAt=null}if(screen==='games')loadGames(true);if(screen==='runs'&&application.overview?.selected===application.selected)renderRuns();if(researchScreens.has(screen))loadAnalysis(true);if(changed){window.scrollTo({top:0,behavior:'instant'});$('heading-'+screen)?.focus({preventScroll:true})}}
 function classResult(result){return result==='1-0'||result==='0-1'?'win':result==='1/2-1/2'?'draw':'pending'}
 const graphState = new WeakMap();
 const LA=globalThis.LabAnalytics;
@@ -193,12 +193,12 @@ function renderOverview(d){
   $('arena-wld').textContent=m.length?`В: ${fmt(aw)} · Н: ${fmt(ad)} · П: ${fmt(al)}`:'В: — · Н: — · П: —';
   $('arena-size').textContent=m.length?`${fmt(ap)} проведено · ${fmt(ap-ac)} не окончено`:'Нет данных';
   $('arena-caption').textContent='vs. frozen v0.2 · '+m.length+' последних итераций';
-  setHTML($('recent-games'),d.games.length?d.games.slice(0,6).map(g=>`<tr><td>#${g.game_id} <small> / ${g.iteration}</small></td><td><span class="result-pill ${classResult(g.result)}">${esc(resultNames[g.result]||g.result)}</span></td><td>${esc(reasonNames[g.reason]||g.reason)}</td><td>${fmt(g.plies)}</td><td><button class="table-button view-game" data-id="${g.game_id}" data-kind="selfplay">Просмотр →</button></td></tr>`).join(''):'<tr><td colspan="5" class="table-empty">Партии пока отсутствуют</td></tr>');
+  setHTML($('recent-games'),d.games.length?d.games.slice(0,6).map(g=>`<tr><td>#${esc(g.game_id)} <small> / ${esc(g.iteration)}</small></td><td><span class="result-pill ${classResult(g.result)}">${esc(resultNames[g.result]||g.result)}</span></td><td>${esc(reasonNames[g.reason]||g.reason)}</td><td>${fmt(g.plies)}</td><td><button class="table-button view-game" data-id="${esc(g.game_id)}" data-kind="selfplay">Просмотр →</button></td></tr>`).join(''):'<tr><td colspan="5" class="table-empty">Партии пока отсутствуют</td></tr>');
   if(application.screen==='runs')renderRuns();
   const sync=$('sync-label').parentElement;sync.classList.toggle('stale',accessWarnings.length>0);sync.classList.remove('disconnected','pending');
 }
 function renderRuns(){const d=application.overview;if(!d)return;
-  setHTML($('run-list'),d.runs.length?d.runs.map(r=>`<article class="run-card ${r.id===d.selected?'current':''}" data-run="${esc(r.id)}"><span class="status-badge ${esc(r.status)}">${esc(statusNames[r.status]||r.status)}</span><h2>${esc(r.name)}</h2><p>${esc(r.created_at?.replace('T',' ').replace('+00:00',' UTC')||'Дата неизвестна')}</p><div class="run-totals"><span><b>${fmt(r.iteration)}</b> итераций</span><span><b>${fmt(r.games)}</b> партий</span></div></article>`).join(''):'<div class="panel empty-panel">Пока нет экспериментов. Нажмите «Создать запуск».</div>');
+  setHTML($('run-list'),d.runs.length?d.runs.map(r=>`<article class="run-card ${r.id===d.selected?'current':''}" data-run="${esc(r.id)}" role="button" tabindex="0" aria-pressed="${r.id===d.selected}"><span class="status-badge ${esc(r.status)}">${esc(statusNames[r.status]||r.status)}</span><h2>${esc(r.name)}</h2><p>${esc(r.created_at?.replace('T',' ').replace('+00:00',' UTC')||'Дата неизвестна')}</p><div class="run-totals"><span><b>${fmt(r.iteration)}</b> итераций</span><span><b>${fmt(r.games)}</b> партий</span></div></article>`).join(''):'<div class="panel empty-panel">Пока нет экспериментов. Нажмите «Создать запуск».</div>');
   renderLog(d);
 }
 
@@ -213,7 +213,7 @@ async function loadAnalysis(force=false){if(analysisBusy){if(force)analysisAgain
     if(screen==='system')try {
       const storage=await api('/api/storage/'+encodeURIComponent(run));
       if(!valid())return;const sp=storage.space||{};
-      const mb=x=>num((x||0)/1048576,1)+' МБ';
+      const mb=x=>x==null?'—':num(x/1048576,1)+' МБ';
       $('storage-status').innerHTML=`<div class="diagnostic-item"><strong>На диске: ${mb(sp.total_bytes)}</strong><p>Несжатые журналы: ${mb(sp.journals_bytes)} · Сжатые архивы: ${mb(sp.archives_bytes)} · Checkpoint: ${mb(sp.checkpoint_bytes)} · Прочее: ${mb(sp.other_bytes)}</p></div>`;
     } catch(error) { if(valid())$('storage-status').textContent='Место на диске: '+error.message; }
     if(!valid())return;
@@ -222,7 +222,7 @@ async function loadAnalysis(force=false){if(analysisBusy){if(force)analysisAgain
     if(!valid())return;
     const t=data.totals||{}, a=data.arena||{}, c=data.checkpoint||{};
     $('a-finished').textContent=fmt(t.finished);
-    $('a-finished-note').textContent=`${num(data.completion_rate==null?null:100*data.completion_rate,1)}% завершённых · ${fmt(t.unfinished)} незавершённых`;
+    $('a-finished-note').textContent=(data.completion_rate==null?'Доля неизвестна':num(100*data.completion_rate,1)+'% завершённых')+' · '+fmt(t.unfinished)+' незавершённых';
     $('a-samples').textContent=fmt(t.samples);
     $('a-score').textContent=a.score==null?'—':num(100*a.score,1)+'%';
     $('a-score-note').textContent=a.completed?`Описательный счёт, n=${fmt(a.completed)}. Старые матчи повторяли одни и те же партии.`:'Нет завершённых матчей';
@@ -238,7 +238,7 @@ async function loadAnalysis(force=false){if(analysisBusy){if(force)analysisAgain
     setHTML($('evaluation-history'),evals.length?evals.map(x=>{const v=x.statistics||{};return `<div class="diagnostic-item"><strong>${esc(x.created_at||x.filename)} · ${v.score==null?'—':num(100*v.score,1)+'%'} score</strong><p>${fmt(v.wins)} побед · ${fmt(v.draws)} ничьих · ${fmt(v.losses)} поражений · ${fmt(v.unfinished)} незавершённых · ${fmt(v.completed)} учтённых · ${fmt(v.unique_sequences??'?')} уникальных партий · ${fmt(v.unique_opening_positions??'?')} стартовых позиций · набор: ${esc(x.suite||'legacy')} · ${esc(x.candidate||'—')} vs ${esc(x.reference||'—')}${v.unique_sequences===2 && v.completed>=20?' · ⚠ Повторяющиеся матчи':''}</p></div>`}).join(''):'<div class="diagnostic-item"><strong>Нет дополнительных проверок</strong><p>Запустите scripts/EVALUATE_RUN_WINDOWS.bat для независимой серии матчей. Существующие контрольные матчи показаны в разделе «Обзор».</p></div>');
     const tour=data.tournaments||[];
     setHTML($('tournament-ranking'),tour.length?tour.slice(0,2).map(t=>
-      `<div class="diagnostic-item"><strong>${esc(t.filename)} · checkpoint ranking</strong><p>${(t.ranking||[]).slice(0,8).map(x=>`#${x.iteration}: ${x.score==null?'—':num(x.score*100,1)+'%'} (${x.unique_sequences} партий)`).join(' · ')}</p></div>`).join(''):'<div class="diagnostic-item"><strong>Исторических турниров ещё нет</strong><p>Нажмите «Сравнить 8 checkpoint» — тест не меняет веса.</p></div>');
+      `<div class="diagnostic-item"><strong>${esc(t.filename)} · checkpoint ranking</strong><p>${(t.ranking||[]).slice(0,8).map(x=>`#${fmt(x.iteration)}: ${x.score==null?'—':num(x.score*100,1)+'%'} (${fmt(x.unique_sequences)} партий)`).join(' · ')}</p></div>`).join(''):'<div class="diagnostic-item"><strong>Исторических турниров ещё нет</strong><p>Нажмите «Сравнить 8 checkpoint» — тест не меняет веса.</p></div>');
     const quality=data.quality||{}, reason=quality.termination_reasons||{};
     const reasonText=Object.entries(reason).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k,n])=>`${esc(reasonNames[k]||k)}: ${fmt(n)}`).join(' · ');
     $('quality-status').innerHTML=quality.reason_iterations?`<div class="diagnostic-item"><strong>Причины завершения · ${fmt(quality.reason_iterations)} итераций v0.6</strong><p>${reasonText||'Нет исходов'} · повторения: ${quality.repetition_fraction==null?'—':num(quality.repetition_fraction*100,1)+'%'} · повторные визиты: ${fmt(quality.position_revisits)}</p></div><div class="diagnostic-item"><strong>Ограничение PPO</strong><p>Последний approx KL: ${num(quality.last_approx_kl,5)} · clip fraction: ${num(quality.last_clip_fraction,4)} · градиент: ${num(quality.last_grad_norm,3)} · остановок по KL: ${fmt(quality.kl_early_stops)}</p></div>`:'<div class="diagnostic-item"><strong>Исторический запуск</strong><p>Для этих итераций v0.5 ещё не записывала причины ничьих и KL. При продолжении эксперимента v0.6 добавит новые метрики без пересчёта старых.</p></div>';
@@ -259,7 +259,7 @@ let gamesBusy=false,gamesAgain=false;
 async function loadGames(force=false){if(selectionPending||application.screen!=='games')return;if(!application.selected){$('games-list').innerHTML='<tr><td colspan="6" class="table-empty">Нет выбранного эксперимента</td></tr>';$('games-count').textContent='—';return}if(gamesBusy){if(force)gamesAgain=true;return}const run=application.selected,epoch=selectionEpoch;
   const kind=$('game-kind').value,result=$('game-result').value,key=[run,kind,result].join('|');if(!force&&gamesKey===key&&!REL.due(gamesAt,Date.now(),5000))return;gamesBusy=true;gamesKey=key;
   try{const data=await api('/api/games?'+new URLSearchParams({run,kind,result,limit:'50'}));if(selectionEpoch!==epoch||application.selected!==run||application.screen!=='games'||$('game-kind').value!==kind||$('game-result').value!==result)return;gamesAt=Date.now();$('games-count').textContent=`${data.games.length} последних записей`;
-  $('games-list').innerHTML=data.games.length?data.games.map(g=>`<tr><td>#${g.game_id}</td><td>${g.iteration}</td><td><span class="result-pill ${classResult(g.result)}">${esc(resultNames[g.result]||g.result)}</span></td><td>${esc(reasonNames[g.reason]||g.reason)}</td><td>${fmt(g.plies)}</td><td><button class="table-button view-game" data-id="${g.game_id}" data-kind="${kind}">Открыть →</button></td></tr>`).join(''):'<tr><td colspan="6" class="table-empty">Записей с таким результатом пока нет</td></tr>';}
+  $('games-list').innerHTML=data.games.length?data.games.map(g=>`<tr><td>#${esc(g.game_id)}</td><td>${esc(g.iteration)}</td><td><span class="result-pill ${classResult(g.result)}">${esc(resultNames[g.result]||g.result)}</span></td><td>${esc(reasonNames[g.reason]||g.reason)}</td><td>${fmt(g.plies)}</td><td><button class="table-button view-game" data-id="${esc(g.game_id)}" data-kind="${esc(kind)}">Открыть →</button></td></tr>`).join(''):'<tr><td colspan="6" class="table-empty">Записей с таким результатом пока нет</td></tr>';}
   catch(e){if(application.selected===run&&application.screen==='games'){$('games-count').textContent='Данные устарели · '+e.message;gamesAt=Date.now()}}finally{gamesBusy=false;if(gamesAgain){gamesAgain=false;queueMicrotask(()=>loadGames(true))}}
 }
 async function refresh(force=false){
@@ -352,7 +352,7 @@ document.addEventListener('click',e=>{const nav=e.target.closest('[data-screen]'
   const goto=e.target.closest('[data-goto]');if(goto){navigate(goto.dataset.goto);return}
   const preset=e.target.closest('[data-preset]');if(preset){applyPreset(preset.dataset.preset);return}
   const replay=e.target.closest('.view-game');if(replay){showReplay(+replay.dataset.id,replay.dataset.kind);return}
-  const tab=e.target.closest('[data-metric]');if(tab){application.metric=tab.dataset.metric;qsa('[data-metric]').forEach(b=>b.classList.toggle('on',b===tab));if(application.overview)renderOverview(application.overview);return}
+  const tab=e.target.closest('[data-metric]');if(tab){application.metric=tab.dataset.metric;qsa('[data-metric]').forEach(b=>{b.classList.toggle('on',b===tab);b.setAttribute('aria-pressed',String(b===tab))});if(application.overview)renderOverview(application.overview);return}
   const run=e.target.closest('[data-run]');if(run){selectRun(run.dataset.run);navigate('overview');return}
   const move=e.target.closest('.move-list button[data-step]');if(move){pauseReplay();replayPosition(+move.dataset.step);return}});
 async function startEvaluation(){
@@ -408,14 +408,16 @@ async function loadAgentLab(run){
   }catch(error){if(selectionEpoch===epoch&&application.selected===run&&application.screen==='agents')area.textContent='Agent Lab: '+error.message}
 }
 
+let agentActionPending=false;
 async function trainSpecialist(profile){
-  if(!application.selected){toast('Выберите эксперимент');return}
+  const run=application.selected;if(!run||!canMutate()||agentActionPending){toast('Выберите актуальный эксперимент');return}
   if(!await askConfirm('Запустить отдельное обучение '+profile+'? Основные веса и PPO не изменятся.'))return;
+  if(!canMutate()||run!==application.selected||agentActionPending)return;agentActionPending=true;
   try{
     const body={epochs:+$('agent-epochs').value,max_rows:+$('agent-rows').value,batch_size:+$('agent-batch').value,teacher_depth:+$('agent-depth').value};
-    await api('/api/agents/'+encodeURIComponent(application.selected)+'/train/'+profile,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    await api('/api/agents/'+encodeURIComponent(run)+'/train/'+profile,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     toast('Обучение '+profile+' запущено');await loadAgentLab(application.selected);
-  }catch(e){toast('Agent Lab: '+e.message)}
+  }catch(e){toast('Agent Lab: '+e.message)}finally{agentActionPending=false}
 }
 
 document.addEventListener('click',async e=>{
@@ -481,9 +483,11 @@ $('copy-uci').onclick=()=>{if(application.replay)copyText(application.replay.mov
 $('replay-play').onclick=playReplay;
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseReplay();else poll(true)});
 const savedUX=readPrefs();if(savedUX.draft&&typeof savedUX.draft==='object'){for(const el of qsa('#config-overlay input[id]')){const value=savedUX.draft[el.id];if(typeof value==='string'){el.value=value;if(!el.checkValidity())el.value=el.defaultValue}}qsa('[data-preset]').forEach(b=>b.classList.remove('chosen'))}
-if(['value','policy','entropy'].includes(savedUX.metric)){application.metric=savedUX.metric;qsa('[data-metric]').forEach(b=>b.classList.toggle('on',b.dataset.metric===application.metric))}
+if(['value','policy','entropy'].includes(savedUX.metric)){application.metric=savedUX.metric;qsa('[data-metric]').forEach(b=>{const active=b.dataset.metric===application.metric;b.classList.toggle('on',active);b.setAttribute('aria-pressed',String(active))})}
 if(['all','25','100','250'].includes(savedUX.range))$('chart-range').value=savedUX.range;
 if(typeof savedUX.smooth==='boolean')$('chart-smooth').checked=savedUX.smooth;
 $('chart-range').addEventListener('change',()=>savePrefs({range:$('chart-range').value}));$('chart-smooth').addEventListener('change',()=>savePrefs({smooth:$('chart-smooth').checked}));document.addEventListener('click',e=>{if(e.target.closest('[data-metric]'))savePrefs({metric:application.metric})});
 if(typeof savedUX.screen==='string'&&$('screen-'+savedUX.screen))navigate(savedUX.screen);
 updateConfigSummary();poll();
+
+document.addEventListener('keydown',e=>{const card=e.target.closest('.run-card[role=button]');if(card&&['Enter',' '].includes(e.key)){e.preventDefault();card.click()}});

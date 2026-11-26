@@ -105,3 +105,27 @@ test('unchanged polling retains recent row',async({page})=>{
  const response=page.waitForResponse(r=>r.url().includes('/api/overview'));await page.locator('#reload').click();await response;
  await expect(button).toHaveAttribute('data-identity-probe','keep');
 });
+
+// Actual application HTML/CSS/JS served by FastAPI, synthetic responses only.
+test('all nine sections: desktop and mobile, empty and populated',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(String(e)));
+ const sections=['overview','runs','games','analysis','evaluation','models','agents','system','guide'];
+ let populated=false;
+ const metrics=Array.from({length:32},(_,i)=>({iteration:i+1,train:{value_mse:.8-i*.01,policy_loss:-.03,entropy:1.2},games_per_s:1.2,plies_per_s:120}));
+ await page.route('**/api/overview*',r=>r.fulfill({json:{runs:populated?[{id:'fixture_qa',name:'fixture_qa'}]:[],selected:populated?'fixture_qa':null,process:{active:false},state:populated?{status:'completed',iteration:32,counters:{games:128,finished:96,unfinished:32,white_wins:40,black_wins:36,draws:20}}:null,metadata:{},metrics:populated?metrics:[],games:[],log:populated?['[fixture] iteration complete']:[],file_warnings:[]}}));
+ await page.route('**/api/games?*',r=>r.fulfill({json:{games:[]}}));
+ await page.route('**/api/analysis?*',r=>r.fulfill({json:{series:metrics.map(m=>({iteration:m.iteration,value_mse:m.train.value_mse,finish_rate:75,approx_kl:.02,clip_fraction:.1,performance:{total_iteration_s:12,average_inference_batch:8}})),series_total:32,totals:{games:128,finished:96,samples:2000},arena:{},evaluations:[],checkpoint:{exists:true,size_bytes:1000000},warnings:[]}}));
+ for(const state of ['empty','populated']){
+  populated=state==='populated';await page.goto(root);await expect(page.locator('#sync-label')).toContainText('Локальные данные');
+  for(const width of [1440,390]){
+   await page.setViewportSize({width,height:900});
+   for(const screen of sections){
+    await page.locator('[data-screen='+screen+']').click();await expect(page.locator('#screen-'+screen)).toBeVisible();
+    await expect(page.locator('#heading-'+screen)).toBeVisible();await expect(page.locator('[data-screen='+screen+']')).toHaveAttribute('aria-current','page');
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth)).toBe(width);
+    await page.screenshot({path:'test-results/final/'+state+'-'+width+'-'+screen+'.png',fullPage:true,animations:'disabled'});
+   }
+  }
+ }
+ expect(errors).toEqual([]);
+});
