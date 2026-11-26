@@ -18,7 +18,7 @@ RowLayout {
         text: status.label
         textFormat: Text.PlainText
         color: status.signalColor
-        font.pixelSize: theme.typeScale.caption
+        font.pixelSize: Math.round(theme.typeScale.caption * workspaceModel.textScale / 100)
         font.weight: Font.DemiBold
         Layout.fillWidth: true
         wrapMode: Text.Wrap
