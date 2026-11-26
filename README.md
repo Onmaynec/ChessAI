@@ -2,7 +2,7 @@
 
 # Chess AI 🧠
 
-[![Version](https://img.shields.io/badge/version-0.9.6-242424)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.9.7-242424)](VERSION)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows)](docs/README.md)
 [![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python)](requirements.txt)
 [![PyTorch](https://img.shields.io/badge/PyTorch-CUDA%20%7C%20CPU-EE4C2C?logo=pytorch)](requirements.txt)
@@ -14,7 +14,11 @@
 
 </div>
 
-## Vision Bot 0.9.6 — Professional Desktop Interface (Qt preview)
+## Vision Bot 0.9.7 — Advanced Chessboard & Analysis (Qt preview)
+
+Шахматная доска с 12 оригинальными SVG-фигурами, ориентация, стрелка предложенного хода, кандидаты, оценочная шкала и история полученных позиций. Только локальный просмотр; рабочий CustomTkinter сохранён. [Документация и проверка](docs/VISION_UI_BOARD_097.md).
+
+### 0.9.6 — Professional Desktop Interface (Qt preview)
 
 Новая отдельная оболочка Qt Quick: обзор, анализ, журнал, настройки, общие компоненты и адаптивная компоновка. Пока только локальный просмотр; рабочий CustomTkinter сохранён. [Установка, режимы и проверка](docs/VISION_UI_QT_096.md).
 
