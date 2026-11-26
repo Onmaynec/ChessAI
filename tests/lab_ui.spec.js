@@ -56,3 +56,14 @@ test('responsive populated overview and evaluation layout',async({page})=>{
  await page.screenshot({path:'test-results/lab-evaluation.png',fullPage:true});
  expect(errors).toEqual([]);
 });
+
+test('chart range and raw CSV, report detail',async({page})=>{
+ const fixture={runs:[{id:'r1',name:'r1'}],selected:'r1',process:{active:false},state:{status:'completed',iteration:40},metadata:{},metrics:Array.from({length:40},(_,i)=>({iteration:i+1,train:{value_mse:i===12?null:i/40}})),games:[],log:[],file_warnings:[]};
+ await page.route('**/api/overview*',r=>r.fulfill({json:fixture}));
+ await page.route('**/api/analysis*',r=>r.fulfill({json:{series:[],evaluations:[{filename:'eval_fixture.json',candidate:'latest.pt',reference:'best.pt',suite:'holdout',statistics:{wins:2,draws:2,losses:1,unfinished:3}}]}}));
+ await page.goto(root);await expect(page.locator('#main-chart svg')).toBeVisible();
+ await page.locator('#chart-range').selectOption('25');await expect(page.locator('#chart-window')).toContainText('#16–40');
+ await page.locator('#chart-smooth').check();await expect(page.locator('#main-chart svg path')).toHaveCount(2);
+ const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#chart-download').click()]);expect(download.suggestedFilename()).toContain('window.csv');
+ await page.locator('[data-screen=evaluation]').click();await expect(page.locator('#evaluation-detail .eval-score strong')).toHaveText('60%');await expect(page.locator('#evaluation-detail')).toContainText('best.pt');
+});

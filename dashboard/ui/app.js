@@ -14,34 +14,95 @@ const researchScreens = new Set(['analysis','evaluation','models','agents','syst
 function navigate(screen){if(!$('screen-'+screen))return;application.screen=screen;qsa('.screen').forEach(e=>e.classList.toggle('hidden',e.id!=='screen-'+screen));qsa('.nav-item').forEach(e=>{const active=e.dataset.screen===screen;e.classList.toggle('selected',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')});$('breadcrumb').textContent={overview:'Обзор обучения',games:'Партии и анализ',analysis:'Диагностика модели',runs:'Эксперименты',guide:'Методика',evaluation:'Evaluation',models:'Модели и checkpoint',agents:'Agent Lab',system:'Ресурсы и данные'}[screen];if(screen==='games')loadGames();if(screen==='runs')renderRuns();if(researchScreens.has(screen))loadAnalysis()}
 function classResult(result){return result==='1-0'||result==='0-1'?'win':result==='1/2-1/2'?'draw':'pending'}
 const graphState = new WeakMap();
-function graph(container, values, {accent='#fff',height=245,unit='',ymin=null,iterations=null}={}){
-  const all=values.map((v,i)=>({x:iterations?.[i]??i+1,y:v==null||v===''||!Number.isFinite(Number(v))?null:Number(v)}));
-  const range=container.id==='main-chart'&&$('chart-range').value!=='all'?Number($('chart-range').value):all.length;
-  const rows=all.slice(-range), valid=rows.filter(r=>r.y!==null);
-  const w=Math.max(240,container.clientWidth||780),h=Math.max(100,container.clientHeight||height);
-  const signature=JSON.stringify([rows,accent,w,h,ymin,unit]);
-  if(graphState.get(container)?.signature===signature)return;
-  graphState.set(container,{signature,values,options:{accent,height,unit,ymin,iterations}});
-  if(!valid.length){container.innerHTML='<div class="empty-chart">Для графика пока недостаточно данных.</div>';container.removeAttribute('tabindex');container.removeAttribute('aria-label');container.onfocus=container.onblur=container.onkeydown=null;return}
-  const l=w<400?50:64,r=14,t=20,b=27;
-  let lo=ymin??Math.min(...valid.map(x=>x.y)),hi=Math.max(...valid.map(x=>x.y));
-  const spread=Math.max((hi-lo)*.12,Math.abs(hi)*.01,.000001);
-  hi+=spread;if(ymin===null)lo-=spread;if(hi<=lo)hi=lo+spread;
-  const xmin=Number(rows[0].x),xmax=Number(rows.at(-1).x);
-  const fx=x=>l+(w-l-r)*(xmax===xmin?.5:(Number(x)-xmin)/(xmax-xmin));
-  const fy=y=>t+(h-t-b)*(1-(y-lo)/(hi-lo));
-  let axes='',path='',drawing=false;
-  for(let i=0;i<=4;i++){const y=t+(h-t-b)*i/4,v=hi-(hi-lo)*i/4;axes+='<line x1="'+l+'" y1="'+y+'" x2="'+(w-r)+'" y2="'+y+'" stroke="#292929" stroke-dasharray="3 5"/><text x="'+(l-9)+'" y="'+(y+4)+'" text-anchor="end" fill="#b3b3b3" font-size="12">'+esc(num(v,4))+'</text>'}
-  for(const row of rows){if(row.y===null){drawing=false;continue}path+=(drawing?' L ':' M ')+fx(row.x)+' '+fy(row.y);drawing=true}
-  const points=valid.length<=25?valid.map(row=>'<circle cx="'+fx(row.x)+'" cy="'+fy(row.y)+'" r="2.8" fill="'+accent+'"/>').join(''):'';
-  container.innerHTML='<div class="chart-readout hidden" aria-live="off"></div><svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" role="img" aria-label="Метрика по итерациям"><title>График по реальным итерациям; пропуски не интерполируются</title>'+axes+'<path d="'+path+'" fill="none" stroke="'+accent+'" stroke-width="1.7" vector-effect="non-scaling-stroke"/>'+points+'<text x="'+l+'" y="'+(h-8)+'" fill="#b3b3b3" font-size="12">'+esc(xmin)+'</text><text x="'+(w-r)+'" y="'+(h-8)+'" text-anchor="end" fill="#b3b3b3" font-size="12">'+esc(xmax)+' · итерация</text><line class="crosshair" visibility="hidden" y1="'+t+'" y2="'+(h-b)+'" stroke="#aaa" stroke-dasharray="3 3"/></svg>';
-  container.tabIndex=0;container.setAttribute('aria-label','График: '+valid.length+' измерений; стрелки для просмотра значений');
-  const svg=container.querySelector('svg'),readout=container.querySelector('.chart-readout'),cross=container.querySelector('.crosshair');
-  let index=rows.length-1;
-  function show(i){index=Math.max(0,Math.min(rows.length-1,i));const row=rows[index];readout.textContent='Итерация '+row.x+' · '+num(row.y,5)+(unit?' '+unit:'');readout.classList.remove('hidden');cross.setAttribute('x1',fx(row.x));cross.setAttribute('x2',fx(row.x));cross.setAttribute('visibility','visible')}
-  function hide(){readout.classList.add('hidden');cross.setAttribute('visibility','hidden')}
-  svg.onpointermove=e=>{const rect=svg.getBoundingClientRect(),x=(e.clientX-rect.left)*w/rect.width;let closest=0;for(let i=1;i<rows.length;i++)if(Math.abs(fx(rows[i].x)-x)<Math.abs(fx(rows[closest].x)-x))closest=i;show(closest)};
-  svg.onpointerleave=hide;container.onfocus=()=>show(index);container.onblur=hide;container.onkeydown=e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();show(index+(e.key==='ArrowRight'?1:-1))}};
+const LA=globalThis.LabAnalytics;
+let chartAnchor=null,chartRun=null,referenceSnapshot=null,referenceRequest=0,reportRun=null,reportList=[],profileRows=[];
+let chartExport=[];
+function graph(container, values, {accent='#fff',height=245,unit='',ymin=null,iterations=null,overlay=[],overlayName='',smoothPeriod=0}={}){
+ const rows=LA.rows(values,iterations), rolling=smoothPeriod?LA.smooth(rows,smoothPeriod):[];
+ const ref=overlay.length?LA.aligned(rows,overlay):[];
+ const series=[{rows,stroke:accent,label:'Исходные',dash:''}];
+ if(rolling.length)series.push({rows:rolling,stroke:'#86d5a2',label:'Среднее '+smoothPeriod,dash:'6 3'});
+ if(ref.length)series.push({rows:ref,stroke:'#a7c9ee',label:overlayName||'Сравнение',dash:'2 4'});
+ const w=Math.max(240,container.clientWidth||780),h=Math.max(100,container.clientHeight||height);
+ const signature=JSON.stringify([series,w,h,ymin,unit]);
+ if(graphState.get(container)?.signature===signature)return;
+ const previous=graphState.get(container);
+ const state={signature,values,options:{accent,height,unit,ymin,iterations,overlay,overlayName,smoothPeriod},cursor:previous?.cursor};
+ graphState.set(container,state);
+ const bounds=LA.extent(series.map(s=>s.rows),ymin);
+ if(!bounds||!rows.length){container.innerHTML='<div class="empty-chart">Нет измерений в выбранном диапазоне.</div>';container.removeAttribute('tabindex');container.removeAttribute('aria-label');container.onfocus=container.onblur=container.onkeydown=null;return}
+ const l=w<400?52:67,r=15,t=22,b=30,lo=bounds.lo,hi=bounds.hi;
+ const xmin=rows[0].x,xmax=rows.at(-1).x;
+ const fx=x=>l+(w-l-r)*(xmax===xmin?.5:(x-xmin)/(xmax-xmin));
+ const fy=y=>t+(h-t-b)*(1-(y-lo)/(hi-lo));
+ let axes='';
+ for(let i=0;i<=4;i++){const y=t+(h-t-b)*i/4,v=hi-(hi-lo)*i/4;axes+='<line x1="'+l+'" y1="'+y+'" x2="'+(w-r)+'" y2="'+y+'" stroke="#292929" stroke-dasharray="3 5"/><text x="'+(l-8)+'" y="'+(y+4)+'" text-anchor="end" fill="#b3b3b3" font-size="11">'+esc(num(v,5))+'</text>'}
+ const paths=series.map(s=>{let path='',last=null;for(const row of s.rows){if(row.y===null){last=null;continue}path+=(last!==null&&row.x===last+1?' L ':' M ')+fx(row.x)+' '+fy(row.y);last=row.x}
+ const points=s.rows.filter((r,i)=>r.y!==null&&(s.rows.length<=25||((i===0||s.rows[i-1].y===null||s.rows[i-1].x!==r.x-1)&&(i===s.rows.length-1||s.rows[i+1].y===null||s.rows[i+1].x!==r.x+1)))).map(row=>'<circle cx="'+fx(row.x)+'" cy="'+fy(row.y)+'" r="2.5" fill="'+s.stroke+'"/>').join('');
+ return '<path d="'+path+'" fill="none" stroke="'+s.stroke+'" stroke-width="1.6" stroke-dasharray="'+s.dash+'" vector-effect="non-scaling-stroke"/>'+points}).join('');
+ let xLabels='';const ticks=Math.min(w<400?3:5,rows.length);for(let i=0;i<ticks;i++){const x=rows[Math.round(i*(rows.length-1)/Math.max(1,ticks-1))].x;xLabels+='<text x="'+fx(x)+'" y="'+(h-8)+'" text-anchor="middle" fill="#b3b3b3" font-size="11">'+esc(x)+'</text>'}
+ container.innerHTML='<div class="chart-readout hidden"></div><svg viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Метрика по итерациям"><title>Пропуски не интерполируются. Горизонтальная ось: итерация.</title>'+axes+paths+xLabels+'<line class="crosshair" visibility="hidden" y1="'+t+'" y2="'+(h-b)+'" stroke="#aaa" stroke-dasharray="3 3"/></svg>';
+ container.tabIndex=0;container.setAttribute('aria-label','График: стрелки влево и вправо для просмотра измерений');
+ const svg=container.querySelector('svg'),readout=container.querySelector('.chart-readout'),cross=container.querySelector('.crosshair');
+ let index=Math.max(0,rows.findIndex(r=>r.x===state.cursor));if(state.cursor==null)index=rows.length-1;
+ function show(i){index=Math.max(0,Math.min(rows.length-1,i));const row=rows[index];state.cursor=row.x;readout.textContent='Итерация '+row.x+' · '+series.map(s=>s.label+': '+num(s.rows[index]?.y,6)+(unit?' '+unit:'')).join(' · ');readout.classList.remove('hidden');cross.setAttribute('x1',fx(row.x));cross.setAttribute('x2',fx(row.x));cross.setAttribute('visibility','visible')}
+ function hide(){readout.classList.add('hidden');cross.setAttribute('visibility','hidden')}
+ svg.onpointermove=e=>{const rect=svg.getBoundingClientRect(),x=(e.clientX-rect.left)*w/rect.width;let closest=0;for(let i=1;i<rows.length;i++)if(Math.abs(fx(rows[i].x)-x)<Math.abs(fx(rows[closest].x)-x))closest=i;show(closest)};
+ svg.onpointerleave=()=>{if(document.activeElement!==container)hide()};container.onfocus=()=>show(index);container.onblur=hide;container.onkeydown=e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();show(index+(e.key==='ArrowRight'?1:-1))}};
+ if(document.activeElement===container)show(index);
+}
+function updateReferenceOptions(d){
+ const el=$('chart-reference'),old=el.value,opts='<option value="">Без сравнения</option>'+d.runs.filter(r=>r.id!==d.selected).map(r=>'<option value="'+esc(r.id)+'">'+esc(r.name||r.id)+'</option>').join('');
+ if(el.dataset.options!==opts){el.innerHTML=opts;el.dataset.options=opts;el.value=old===d.selected?'':old}
+ if(referenceSnapshot&&(!el.value||referenceSnapshot.id!==el.value)){referenceSnapshot=null;referenceRequest++;$('chart-reference-note').textContent='Снимок по запросу, без автообновления.'}
+ $('chart-reference-load').disabled=!el.value;
+}
+const metricKeys={value:'value_mse',policy:'policy_loss',entropy:'entropy'};
+function renderMainChart(d){
+ const m=d.metrics||[],key=metricKeys[application.metric];
+ if(chartRun!==d.selected){chartRun=d.selected;chartAnchor=null;referenceSnapshot=null;referenceRequest++;$('chart-reference-note').textContent='Снимок по запросу, без автообновления.'}
+ updateReferenceOptions(d);
+ const all=LA.rows(m.map(r=>r.train?.[key]),m.map(r=>r.iteration));
+ const size=$('chart-range').value==='all'?all.length:Number($('chart-range').value);
+ const pan=$('chart-pan'),max=Math.max(0,all.length-1);
+ if(chartAnchor!==null&&all.length&&chartAnchor<all[0].x){chartAnchor=all[0].x}
+ const end=chartAnchor===null?all.length:Math.max(1,all.findLastIndex(r=>r.x<=chartAnchor)+1);
+ pan.max=String(max);pan.value=String(Math.max(0,end-1));pan.disabled=!all.length||size>=all.length;
+ const window=LA.windowRows(all,size,pan.disabled?null:chartAnchor);
+ const rolling=$('chart-smooth').checked?LA.smooth(window,10):[];
+ const overlay=referenceSnapshot?LA.rows(referenceSnapshot.metrics.map(r=>r.train?.[key]),referenceSnapshot.metrics.map(r=>r.iteration)):[];
+ const aligned=LA.aligned(window,overlay);
+ graph($('main-chart'),window.map(r=>r.y),{iterations:window.map(r=>r.x),smoothPeriod:$('chart-smooth').checked?10:0,overlay,overlayName:'Снимок'});
+ chartExport=window.map((r,i)=>({...r,smooth:rolling[i]?.y,reference:aligned[i]?.y}));
+ $('chart-download').disabled=!window.length;
+ $('chart-window').textContent=window.length?'#'+window[0].x+'–'+window.at(-1).x+' · '+window.length+' / '+all.length+' записей':'Нет истории';
+ $('chart-series-note').textContent=[$('chart-smooth').checked?'— — Среднее 10':'',referenceSnapshot?'··· Снимок другого запуска':''].filter(Boolean).join('  ');
+}
+async function fetchReference(){
+ const id=$('chart-reference').value,run=application.selected,token=++referenceRequest;
+ if(!id||id===run)return;
+ referenceSnapshot=null;$('chart-reference-note').textContent='Загрузка снимка…';$('chart-reference-load').disabled=true;
+ try{const d=await api('/api/overview?run='+encodeURIComponent(id));if(token!==referenceRequest||run!==application.selected||$('chart-reference').value!==id)return;
+ if(d.selected!==id)throw Error('Другой эксперимент в ответе');
+ referenceSnapshot={id,metrics:d.metrics||[]};$('chart-reference-note').textContent='Снимок '+new Date().toLocaleTimeString('ru-RU')+' · совпадающие номера итераций; условия могут различаться.'+(d.file_warnings?.length?' Файлы временно недоступны, возможен кэш.':'');
+ if(application.overview)renderMainChart(application.overview);
+ }catch(e){if(token===referenceRequest)$('chart-reference-note').textContent='Не удалось загрузить: '+e.message}
+ finally{if(token===referenceRequest)$('chart-reference-load').disabled=!$('chart-reference').value}
+}
+function renderPerformance(rows){profileRows=rows.slice(-600);const key=$('performance-metric').value;graph($('performance-chart'),profileRows.map(r=>r.performance?.[key]),{iterations:profileRows.map(r=>r.iteration),ymin:0,unit:'с'});graph($('batch-chart'),profileRows.map(r=>r.performance?.average_inference_batch),{iterations:profileRows.map(r=>r.iteration),ymin:0,unit:'поз.'})}
+function renderEvaluationDetail(){
+ const report=reportList.find(r=>r.filename===$('evaluation-select').value),el=$('evaluation-detail');
+ if(!report){el.textContent='Нет сохранённого отчёта.';return}
+ const v=report.statistics||{},o=LA.outcome(v);
+ const props=[['Candidate',report.candidate],['Reference',report.reference],['Набор',report.suite],['Seed',report.seed],['Дебютных полуходов',report.opening_plies],['Лимит полуходов',report.max_plies],['Запрошено партий',report.games_requested],['Завершённых пар',v.completed_pairs],['Уникальных стартов',v.unique_opening_positions],['Уникальных партий',v.unique_sequences],['Score полных пар',v.paired_score==null?'—':num(100*v.paired_score,1)+'%']];
+ const bar=o&&o.total?'<div class="eval-result-bar" aria-hidden="true">'+o.parts.map((x,i)=>'<span class="outcome-'+i+'" style="width:'+x+'%"></span>').join('')+'</div>':'';
+ el.innerHTML='<div class="eval-score"><small>Score завершённых партий</small><strong>'+(o?.score!=null?num(o.score*100,1)+'%':'—')+'</strong><span>n = '+fmt(o?.n)+'</span></div>'+bar+(o?'<div class="eval-result-labels"><span>В '+fmt(o.w)+'</span><span>Н '+fmt(o.d)+'</span><span>П '+fmt(o.l)+'</span><span>Не завершено '+fmt(o.u)+'</span></div>':'<p class="analysis-help">Исходы неполные или отсутствуют.</p>')+'<dl class="property-list">'+props.map(([k,val])=>'<div><dt>'+esc(k)+'</dt><dd>'+esc(val??'—')+'</dd></div>').join('')+'</dl><p class="analysis-help">Парные и детерминированные партии могут быть зависимы. Калиброванный интервал и Elo не рассчитаны. Имена файлов не доказывают идентичность весов.</p>';
+}
+function updateEvaluationReports(list,run){
+ if(reportRun!==run){reportRun=run;reportList=[];$('evaluation-select').dataset.options=''}
+ reportList=list;const el=$('evaluation-select'),old=el.value,options=list.length?list.map(r=>'<option value="'+esc(r.filename)+'">'+esc(r.created_at||r.filename)+' · '+esc(r.suite||'legacy')+'</option>').join(''):'<option value="">Нет отчётов</option>';
+ if(el.dataset.options!==options){el.innerHTML=options;el.dataset.options=options;if(list.some(r=>r.filename===old))el.value=old}
+ renderEvaluationDetail();
 }
 function renderOverview(d){
   application.overview=d;
@@ -84,9 +145,7 @@ function renderOverview(d){
   $('result-donut').style.background=count?`conic-gradient(${segments.join(',')})`:'var(--line)';
   $('r-white').textContent=fmt(c.white_wins);$('r-black').textContent=fmt(c.black_wins);$('r-draw').textContent=fmt(c.draws);$('r-unfinished').textContent=fmt(c.unfinished);
   const metricName={value:'Value MSE',policy:'Policy loss',entropy:'Entropy'};
-  const metricKey={value:'value_mse',policy:'policy_loss',entropy:'entropy'}[application.metric];
-  const values=m.map(x=>x.train?.[metricKey]);
-  graph($('main-chart'),values,{accent:'#fff',iterations:m.map(x=>x.iteration)});
+  renderMainChart(d);
   $('graph-name').textContent=metricName[application.metric];
   $('graph-note').textContent=application.metric==='value'?'MSE на исходах самоигры, не рейтинг силы':application.metric==='policy'?'Знак и значение PPO loss зависят от преимуществ':'Энтропия политики в текущих позициях';
   graph($('speed-chart'),m.map(x=>x.plies_per_s),{accent:'#fff',height:130,ymin:0,iterations:m.map(x=>x.iteration)});
@@ -112,7 +171,7 @@ function renderRuns(){const d=application.overview;if(!d)return;
 
 let analysisBusy=false;
 async function loadAnalysis(){if(analysisBusy)return;
-  if(!application.selected){for(const id of ['analysis-warnings','quality-status','best-status','gpu-info','storage-status','performance-status','evaluation-history','tournament-ranking','agent-results','agent-training-health','color-audit-info','hardware-benchmark-info'])$(id).textContent='Выберите или создайте эксперимент.';for(const id of ['a-finished','a-samples','a-score','a-checkpoint'])$(id).textContent='—';for(const id of ['completion-chart','analysis-value-chart'])graph($(id),[]);$('eval-live').textContent='Нет выбранного эксперимента';return}
+  if(!application.selected){for(const id of ['analysis-warnings','quality-status','best-status','gpu-info','storage-status','performance-status','evaluation-history','tournament-ranking','agent-results','agent-training-health','color-audit-info','hardware-benchmark-info'])$(id).textContent='Выберите или создайте эксперимент.';for(const id of ['a-finished','a-samples','a-score','a-checkpoint'])$(id).textContent='—';for(const id of ['completion-chart','analysis-value-chart','kl-chart','clip-chart'])graph($(id),[]);renderPerformance([]);updateEvaluationReports([],null);$('eval-live').textContent='Нет выбранного эксперимента';return}
   const run=application.selected;analysisBusy=true;
   try{
     const data=await api('/api/analysis?run='+encodeURIComponent(run));
@@ -135,11 +194,14 @@ async function loadAnalysis(){if(analysisBusy)return;
     $('a-score-note').textContent=a.completed?`Описательный счёт, n=${fmt(a.completed)}. Старые матчи повторяли одни и те же партии.`:'Нет завершённых матчей';
     $('a-checkpoint').textContent=c.exists?'Найден':'Нет';
     $('a-checkpoint-note').textContent=c.exists?`${num((c.size_bytes||0)/1024,0)} КБ · сохранён в runs/`:'Продолжение недоступно';
-    graph($('completion-chart'),(data.series||[]).map(x=>x.finish_rate),{accent:'#fff',ymin:0,iterations:(data.series||[]).map(x=>x.iteration)});
-    graph($('analysis-value-chart'),(data.series||[]).map(x=>x.value_mse),{accent:'#fff',ymin:0,iterations:(data.series||[]).map(x=>x.iteration)});
+    const history=(data.series||[]).slice(-600),iterations=history.map(x=>x.iteration);
+    graph($('completion-chart'),history.map(x=>x.finish_rate),{accent:'#fff',ymin:0,unit:'%',iterations});
+    graph($('analysis-value-chart'),history.map(x=>x.value_mse),{accent:'#fff',ymin:0,iterations});
+    graph($('kl-chart'),history.map(x=>x.approx_kl),{iterations});graph($('clip-chart'),history.map(x=>x.clip_fraction),{iterations,ymin:0});renderPerformance(history);
+    $('analysis-window-note').textContent='Графики: '+history.length+' из '+(data.series||[]).length+' записей в ответе; серверная сводка ограничена 100 000 строками.';
     $('analysis-warnings').innerHTML=data.warnings?.length?data.warnings.map(w=>`<div class="diagnostic-item"><strong>${w.level==='warning'?'Внимание':'Замечание'}</strong><p>${esc(w.text)}</p></div>`).join(''):'<div class="diagnostic-item"><strong>Данных пока недостаточно</strong><p>Начните обучение, чтобы увидеть рекомендации.</p></div>';
-    const evals=data.evaluations||[];
-    $('evaluation-history').innerHTML=evals.length?evals.map(x=>{const v=x.statistics||{};return `<div class="diagnostic-item"><strong>${esc(x.created_at||x.filename)} · ${v.score==null?'—':num(100*v.score,1)+'%'} score</strong><p>${fmt(v.wins)} побед · ${fmt(v.draws)} ничьих · ${fmt(v.losses)} поражений · ${fmt(v.unfinished)} незавершённых · ${fmt(v.completed)} учтённых · ${fmt(v.unique_sequences??'?')} уникальных партий · ${fmt(v.unique_opening_positions??'?')} стартовых позиций · набор: ${esc(x.suite||'legacy')}${v.unique_sequences===2 && v.completed>=20?' · ⚠ Повторяющиеся матчи':''}</p></div>`}).join(''):'<div class="diagnostic-item"><strong>Нет дополнительных проверок</strong><p>Запустите scripts/EVALUATE_RUN_WINDOWS.bat для независимой серии матчей. Существующие контрольные матчи показаны в разделе «Обзор».</p></div>';
+    const evals=data.evaluations||[];updateEvaluationReports(evals,run);
+    $('evaluation-history').innerHTML=evals.length?evals.map(x=>{const v=x.statistics||{};return `<div class="diagnostic-item"><strong>${esc(x.created_at||x.filename)} · ${v.score==null?'—':num(100*v.score,1)+'%'} score</strong><p>${fmt(v.wins)} побед · ${fmt(v.draws)} ничьих · ${fmt(v.losses)} поражений · ${fmt(v.unfinished)} незавершённых · ${fmt(v.completed)} учтённых · ${fmt(v.unique_sequences??'?')} уникальных партий · ${fmt(v.unique_opening_positions??'?')} стартовых позиций · набор: ${esc(x.suite||'legacy')} · ${esc(x.candidate||'—')} vs ${esc(x.reference||'—')}${v.unique_sequences===2 && v.completed>=20?' · ⚠ Повторяющиеся матчи':''}</p></div>`}).join(''):'<div class="diagnostic-item"><strong>Нет дополнительных проверок</strong><p>Запустите scripts/EVALUATE_RUN_WINDOWS.bat для независимой серии матчей. Существующие контрольные матчи показаны в разделе «Обзор».</p></div>';
     const tour=data.tournaments||[];
     $('tournament-ranking').innerHTML=tour.length?tour.slice(0,2).map(t=>
       `<div class="diagnostic-item"><strong>${esc(t.filename)} · checkpoint ranking</strong><p>${(t.ranking||[]).slice(0,8).map(x=>`#${x.iteration}: ${x.score==null?'—':num(x.score*100,1)+'%'} (${x.unique_sequences} партий)`).join(' · ')}</p></div>`).join(''):'<div class="diagnostic-item"><strong>Исторических турниров ещё нет</strong><p>Нажмите «Сравнить 8 checkpoint» — тест не меняет веса.</p></div>';
@@ -320,7 +382,14 @@ $('log-pause').onchange=()=>{if(application.overview)renderLog(application.overv
 async function copyText(text){try{await navigator.clipboard.writeText(text);toast('Скопировано')}catch(e){toast('Не удалось скопировать: '+e.message)}}
 $('log-copy').onclick=()=>copyText($('console-output').textContent);
 $('copy-fen').onclick=()=>copyText($('replay-fen').textContent);
-$('chart-range').onchange=()=>{if(application.overview)renderOverview(application.overview)};
+$('chart-range').onchange=()=>{chartAnchor=null;if(application.overview)renderMainChart(application.overview)};
+$('chart-smooth').onchange=()=>{if(application.overview)renderMainChart(application.overview)};
+$('chart-pan').oninput=e=>{const m=application.overview?.metrics||[];const idx=Number(e.target.value);chartAnchor=idx===m.length-1?null:m[idx]?.iteration??null;if(application.overview)renderMainChart(application.overview)};
+$('chart-live').onclick=()=>{chartAnchor=null;if(application.overview)renderMainChart(application.overview)};
+$('chart-reference').onchange=()=>{referenceSnapshot=null;referenceRequest++;$('chart-reference-note').textContent='Снимок по запросу, без автообновления.';if(application.overview)renderMainChart(application.overview)};
+$('chart-reference-load').onclick=fetchReference;
+$('chart-download').onclick=()=>{if(!chartExport.length)return;const url=URL.createObjectURL(new Blob([LA.csv(chartExport)],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='chessai-'+application.metric+'-window.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('evaluation-select').onchange=renderEvaluationDetail;$('performance-metric').onchange=()=>renderPerformance(profileRows);
 const shell=document.querySelector('.shell');
 function collapse(value){shell.classList.toggle('collapsed',value);$('sidebar-toggle').setAttribute('aria-expanded',String(!value));$('sidebar-toggle').setAttribute('aria-label',value?'Развернуть навигацию':'Свернуть навигацию');$('sidebar-toggle').innerHTML=value?'›':'‹ <span>Свернуть</span>';try{localStorage.setItem('lab.sidebar',String(value))}catch(_){}}
 try{collapse(localStorage.getItem('lab.sidebar')==='true')}catch(_){}
@@ -339,5 +408,5 @@ $('resume-dialog').addEventListener('cancel',e=>{if($('resume-submit').disabled)
 // Geometry-only refresh: no additional API polling on window resizing or screen switches.
 if(typeof ResizeObserver==='function'){
   const observer=new ResizeObserver(entries=>{for(const entry of entries){const el=entry.target,state=graphState.get(el);if(!state||!el.clientWidth||!el.clientHeight)continue;graph(el,state.values,state.options)}});
-  for(const id of ['main-chart','speed-chart','completion-chart','analysis-value-chart'])observer.observe($(id));
+  for(const id of ['main-chart','speed-chart','completion-chart','analysis-value-chart','kl-chart','clip-chart','performance-chart','batch-chart'])observer.observe($(id));
 }

@@ -20,7 +20,7 @@ def summarize(metrics: list[dict]) -> dict:
         for key,col in [('wins','arena_wins'),('draws','arena_draws'),('losses','arena_losses'),('unfinished','arena_unfinished')]:
             total[col]+=int(a.get(key) or 0)
         series.append({'iteration':row.get('iteration'),
-                       'finish_rate': round(100*finished/max(1,int(row.get('games') or 0)),2),
+                       'finish_rate': round(100*finished/int(row['games']),2) if row.get('games') else None,
                        'games_per_s':row.get('games_per_s'),
                        'plies_per_s':row.get('plies_per_s'),
                        'value_mse':(row.get('train') or {}).get('value_mse'),

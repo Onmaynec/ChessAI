@@ -520,6 +520,7 @@ def analysis(run: str):
                                  'statistics':stats,
                                 'interval':data.get('score_interval95_hoeffding'),
                                 'seed':data.get('seed'),'opening_plies':data.get('opening_plies'),
+                                'max_plies':data.get('max_plies'),'games_requested':data.get('games_requested'),
                                 'suite':data.get('suite','legacy'),
                                 'candidate':Path(data.get('candidate','')).name,
                                 'reference':Path(data.get('reference','')).name})
