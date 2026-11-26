@@ -11,7 +11,7 @@ Surface {
     contentItem: ColumnLayout {
         spacing: 8
         Label { text: card.label; color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap }
-        Label { text: card.value || "—"; color: theme.text; font.pixelSize: 26; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
+        Label { text: card.value || "—"; textFormat: Text.PlainText; color: theme.text; font.pixelSize: 26; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
         Label { text: card.detail; color: theme.dim; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.Wrap; visible: text.length > 0 }
     }
 }
