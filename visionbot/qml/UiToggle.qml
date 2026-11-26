@@ -4,9 +4,10 @@ import QtQuick.Controls
 Switch {
     id: control
     font.family: theme.font
-    font.pixelSize: theme.typeScale.body
+    font.pixelSize: Math.round(theme.typeScale.body * workspaceModel.textScale / 100)
     implicitHeight: Math.max(40, contentItem.implicitHeight + 12)
     hoverEnabled: true
+    Accessible.name: text
     indicator: Rectangle {
         x: control.leftPadding
         y: (control.height-height)/2
