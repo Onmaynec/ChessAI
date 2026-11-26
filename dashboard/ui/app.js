@@ -92,14 +92,28 @@ async function fetchReference(){
 function renderPerformance(rows){profileRows=rows.slice(-600);const key=$('performance-metric').value;graph($('performance-chart'),profileRows.map(r=>r.performance?.[key]),{iterations:profileRows.map(r=>r.iteration),ymin:0,unit:'с'});graph($('batch-chart'),profileRows.map(r=>r.performance?.average_inference_batch),{iterations:profileRows.map(r=>r.iteration),ymin:0,unit:'поз.'})}
 function renderEvaluationDetail(){
  const report=reportList.find(r=>r.filename===$('evaluation-select').value),el=$('evaluation-detail');
- if(!report){el.textContent='Нет сохранённого отчёта.';return}
+ if(!report){el.textContent='Нет сохранённого отчёта.';renderEvaluationComparison();return}
  const v=report.statistics||{},o=LA.outcome(v);
+ const mismatch=o&&((v.completed!=null&&v.completed!==o.n)||(v.played!=null&&v.played!==o.total)||(v.score!=null&&o.score!=null&&Math.abs(v.score-o.score)>.00001));
  const props=[['Candidate',report.candidate],['Reference',report.reference],['Набор',report.suite],['Seed',report.seed],['Дебютных полуходов',report.opening_plies],['Лимит полуходов',report.max_plies],['Запрошено партий',report.games_requested],['Завершённых пар',v.completed_pairs],['Уникальных стартов',v.unique_opening_positions],['Уникальных партий',v.unique_sequences],['Score полных пар',v.paired_score==null?'—':num(100*v.paired_score,1)+'%']];
  const bar=o&&o.total?'<div class="eval-result-bar" aria-hidden="true">'+o.parts.map((x,i)=>'<span class="outcome-'+i+'" style="width:'+x+'%"></span>').join('')+'</div>':'';
- el.innerHTML='<div class="eval-score"><small>Score завершённых партий</small><strong>'+(o?.score!=null?num(o.score*100,1)+'%':'—')+'</strong><span>n = '+fmt(o?.n)+'</span></div>'+bar+(o?'<div class="eval-result-labels"><span>В '+fmt(o.w)+'</span><span>Н '+fmt(o.d)+'</span><span>П '+fmt(o.l)+'</span><span>Не завершено '+fmt(o.u)+'</span></div>':'<p class="analysis-help">Исходы неполные или отсутствуют.</p>')+'<dl class="property-list">'+props.map(([k,val])=>'<div><dt>'+esc(k)+'</dt><dd>'+esc(val??'—')+'</dd></div>').join('')+'</dl><p class="analysis-help">Парные и детерминированные партии могут быть зависимы. Калиброванный интервал и Elo не рассчитаны. Имена файлов не доказывают идентичность весов.</p>';
+ el.innerHTML='<div class="eval-score"><small>Score завершённых партий</small><strong>'+(o?.score!=null?num(o.score*100,1)+'%':'—')+'</strong><span>n = '+fmt(o?.n)+'</span></div>'+bar+(o?'<div class="eval-result-labels"><span>В '+fmt(o.w)+'</span><span>Н '+fmt(o.d)+'</span><span>П '+fmt(o.l)+'</span><span>Не завершено '+fmt(o.u)+'</span></div>':'<p class="analysis-help">Исходы неполные или отсутствуют.</p>')+'<dl class="property-list">'+props.map(([k,val])=>'<div><dt>'+esc(k)+'</dt><dd>'+esc(val??'—')+'</dd></div>').join('')+'</dl><p class="analysis-help">Парные и детерминированные партии могут быть зависимы. Калиброванный интервал и Elo не рассчитаны. Имена файлов не доказывают идентичность весов.</p>'+(mismatch?'<p class="report-warning">Сохранённые итоги расходятся со счётчиками исходов. Показан пересчёт по исходам; проверьте исходный отчёт.</p>':'');
+ renderEvaluationComparison();
+}
+function renderEvaluationComparison(){
+ const el=$('evaluation-compare'),current=$('evaluation-select').value,old=el.value;
+ const options='<option value="">Без сопоставления</option>'+reportList.filter(x=>x.filename!==current).map(r=>'<option value="'+esc(r.filename)+'">'+esc(r.created_at||r.filename)+' · '+esc(r.suite||'legacy')+'</option>').join('');
+ if(el.dataset.options!==options){el.innerHTML=options;el.dataset.options=options;if(old!==current)el.value=old}
+ const target=$('evaluation-comparison'),a=reportList.find(r=>r.filename===current),b=reportList.find(r=>r.filename===el.value);
+ if(!a||!b){target.textContent='';return}
+ const va=a.statistics||{},vb=b.statistics||{},oa=LA.outcome(va),ob=LA.outcome(vb);
+ const labels={reference:'Reference',suite:'Набор',seed:'Seed',opening_plies:'Дебютных полуходов',max_plies:'Лимит полуходов',games_requested:'Запрошено партий'};
+ const flags=LA.conditions(a,b);
+ const rows=[['Candidate',a.candidate,b.candidate],['Score',oa?.score==null?'—':num(100*oa.score,1)+'%',ob?.score==null?'—':num(100*ob.score,1)+'%'],['Завершено',oa?.n,ob?.n],['Победы / ничьи / поражения',oa?[oa.w,oa.d,oa.l].join(' / '):null,ob?[ob.w,ob.d,ob.l].join(' / '):null],['Не завершено',oa?.u,ob?.u],...flags.map(f=>[labels[f.key],f.a,f.b,f.state])];
+ target.innerHTML='<div class="table-scroll"><table><thead><tr><th>Показатель</th><th>Отчёт A</th><th>Отчёт B</th></tr></thead><tbody>'+rows.map(([k,x,y,flag])=>'<tr><th scope="row">'+esc(k)+(flag==='different'?'<small class="report-flag"> · различие</small>':flag==='unknown'?'<small> · неизвестно</small>':'')+'</th><td>'+esc(x??'—')+'</td><td>'+esc(y??'—')+'</td></tr>').join('')+'</tbody></table></div><p class="analysis-help">Сопоставление описательное. Даже совпадение записанных условий не подтверждает одинаковые веса эталона и независимость партий. Разность score не является приростом Elo.</p>';
 }
 function updateEvaluationReports(list,run){
- if(reportRun!==run){reportRun=run;reportList=[];$('evaluation-select').dataset.options=''}
+ if(reportRun!==run){reportRun=run;reportList=[];$('evaluation-select').dataset.options='';$('evaluation-compare').value='';$('evaluation-compare').dataset.options=''}
  reportList=list;const el=$('evaluation-select'),old=el.value,options=list.length?list.map(r=>'<option value="'+esc(r.filename)+'">'+esc(r.created_at||r.filename)+' · '+esc(r.suite||'legacy')+'</option>').join(''):'<option value="">Нет отчётов</option>';
  if(el.dataset.options!==options){el.innerHTML=options;el.dataset.options=options;if(list.some(r=>r.filename===old))el.value=old}
  renderEvaluationDetail();
@@ -384,12 +398,12 @@ $('log-copy').onclick=()=>copyText($('console-output').textContent);
 $('copy-fen').onclick=()=>copyText($('replay-fen').textContent);
 $('chart-range').onchange=()=>{chartAnchor=null;if(application.overview)renderMainChart(application.overview)};
 $('chart-smooth').onchange=()=>{if(application.overview)renderMainChart(application.overview)};
-$('chart-pan').oninput=e=>{const m=application.overview?.metrics||[];const idx=Number(e.target.value);chartAnchor=idx===m.length-1?null:m[idx]?.iteration??null;if(application.overview)renderMainChart(application.overview)};
+$('chart-pan').oninput=e=>{const m=(application.overview?.metrics||[]).filter(row=>LA.numeric(row.iteration)!==null);const idx=Number(e.target.value);chartAnchor=idx===m.length-1?null:m[idx]?.iteration??null;if(application.overview)renderMainChart(application.overview)};
 $('chart-live').onclick=()=>{chartAnchor=null;if(application.overview)renderMainChart(application.overview)};
 $('chart-reference').onchange=()=>{referenceSnapshot=null;referenceRequest++;$('chart-reference-note').textContent='Снимок по запросу, без автообновления.';if(application.overview)renderMainChart(application.overview)};
 $('chart-reference-load').onclick=fetchReference;
 $('chart-download').onclick=()=>{if(!chartExport.length)return;const url=URL.createObjectURL(new Blob([LA.csv(chartExport)],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='chessai-'+application.metric+'-window.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-$('evaluation-select').onchange=renderEvaluationDetail;$('performance-metric').onchange=()=>renderPerformance(profileRows);
+$('evaluation-select').onchange=renderEvaluationDetail;$('evaluation-compare').onchange=renderEvaluationComparison;$('performance-metric').onchange=()=>renderPerformance(profileRows);
 const shell=document.querySelector('.shell');
 function collapse(value){shell.classList.toggle('collapsed',value);$('sidebar-toggle').setAttribute('aria-expanded',String(!value));$('sidebar-toggle').setAttribute('aria-label',value?'Развернуть навигацию':'Свернуть навигацию');$('sidebar-toggle').innerHTML=value?'›':'‹ <span>Свернуть</span>';try{localStorage.setItem('lab.sidebar',String(value))}catch(_){}}
 try{collapse(localStorage.getItem('lab.sidebar')==='true')}catch(_){}

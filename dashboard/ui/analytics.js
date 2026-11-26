@@ -2,7 +2,7 @@
 (function(root){
 'use strict';
 const numeric=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
-function rows(values,iterations){return values.map((v,i)=>({x:numeric(iterations?.[i])??i+1,y:numeric(v)}))}
+function rows(values,iterations){return values.map((v,i)=>({x:iterations==null?i+1:numeric(iterations[i]),y:numeric(v)})).filter(r=>r.x!==null)}
 function windowRows(data,size,anchor){
  if(!data.length)return [];
  const end=anchor==null?data.length:Math.max(0,data.findLastIndex(x=>x.x<=anchor)+1);
@@ -28,7 +28,8 @@ function outcome(stats){
  const [w,d,l,u]=vals,n=w+d+l,total=n+u;
  return {w,d,l,u,n,total,score:n?(w+.5*d)/n:null,parts:vals.map(v=>total?100*v/total:0)};
 }
+function conditions(a,b){const keys=['reference','suite','seed','opening_plies','max_plies','games_requested'];return keys.map(key=>({key,a:a?.[key]??null,b:b?.[key]??null,state:a?.[key]==null||b?.[key]==null?'unknown':a[key]===b[key]?'same':'different'}))}
 function csv(data){return ['iteration,raw,rolling_mean,reference',...data.map(r=>[r.x,r.y??'',r.smooth??'',r.reference??''].join(','))].join('\n')+'\n'}
-const api={numeric,rows,windowRows,smooth,aligned,extent,outcome,csv};
+const api={numeric,rows,windowRows,smooth,aligned,extent,outcome,conditions,csv};
 if(typeof module==='object'&&module.exports)module.exports=api;else root.LabAnalytics=api;
 })(typeof globalThis==='object'?globalThis:this);
