@@ -42,7 +42,7 @@ class Lab:
         ttk.Checkbutton(left,text='Always on top',variable=self.top,command=lambda:root.attributes('-topmost',self.top.get())).pack(side='left',padx=8)
         options=['Human']+(['Stockfish 19'] if installed('stockfish') else [])+(['Leela Chess Zero'] if installed('lc0') else [])+['ChessNet Policy','ChessNet Hybrid']
         from neural.model_catalog import inventory
-        self.catalog={r['label']+' · '+r['id'].split('/')[-3] if r.get('run_id') else r['label']:r['path'] for r in inventory(ROOT) if r['selectable'] and r['status']!='external'}
+        self.catalog={r['label']:r['path'] for r in inventory(ROOT) if r['selectable'] and r['status']!='external'}
         paths=list(self.catalog);default=next((label for label,path in self.catalog.items() if path.endswith('/latest.pt')),paths[0] if paths else '')
         self.fields={};self.locked=[]
         for side,name in (('w','WHITE'),('b','BLACK')):

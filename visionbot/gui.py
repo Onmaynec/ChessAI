@@ -36,6 +36,7 @@ class App(Workspace):
         self.color=tk.StringVar(value='white');self.checkpoint=tk.StringVar(value='latest.pt')
         self.consent=tk.BooleanVar(value=False)
         self.external_profile=tk.StringVar(value='balanced')
+        self._actual_model_label=None
         self._active_external=False
         self._active_fixed=False
         self.train=tk.BooleanVar(value=False)
@@ -113,6 +114,8 @@ class App(Workspace):
                     self.add_view_log('error',str(exc))
                 continue
             t=str(raw)
+            if t.startswith('[MODEL_IDENTITY] '):
+                self._actual_model_label=t[len('[MODEL_IDENTITY] '):]
             tag='error' if any(x in t.upper() for x in ('ОСТАНОВКА','ОШИБКА','ВНИМАНИЕ')) else ('move' if ('Ход ' in t or 'подтверждён' in t) else 'info')
             self.add_view_log(tag,t)
             self.observe_message(t,tag)
@@ -242,7 +245,9 @@ class App(Workspace):
         from .external_session import EXTERNAL,ExternalRecovery,input_spec,computer_title
         from .recovery import RecoveryStore
         from botlab.session import BotLabSession
+        requested=self.checkpoint.get()
         self.refresh_model_catalog()
+        if self.checkpoint.get()!=requested:messagebox.showwarning('Модель','Список изменился. Подтверди новую модель и повтори запуск.');return
         selection=self.checkpoint.get();external=selection in EXTERNAL
         entry=next((r for r in self.catalog_entries if r['key']==selection),None)
         if entry is None:messagebox.showerror('Модель','Выбери доступную модель из каталога.');return
@@ -260,6 +265,13 @@ class App(Workspace):
             if not ck.is_file():messagebox.showerror('Модель','Кандидат не найден');return
         else:ck=self.run/'checkpoints'/selection
         is_resume=not attach_any_position and (self.resume.get() if hasattr(self, 'resume') else True) and store_factory(game_run,self.color.get()).exists()
+        if is_resume and not external:
+            try:saved=store_factory(game_run,self.color.get()).load()
+            except (RuntimeError,OSError,ValueError) as exc:messagebox.showerror('Восстановление',str(exc));return
+            if saved.get('original_checkpoint')!=ck.name:
+                messagebox.showwarning('Восстановление','В журнале другая модель. Выбери её или отключи восстановление для новой партии.');return
+            if saved.get('model_sha256')!=entry['sha256']:
+                if not messagebox.askyesno('Восстановление','Будет использована сохранённая ревизия r-'+str(saved.get('model_sha256',''))[:10]+', а не текущая. Продолжить?',parent=self.root):return
         if not ck.is_file() and not is_resume:messagebox.showerror('Checkpoint',f'Не найден:\n{ck}');return
         if not self.engine.is_file():messagebox.showerror('Движок','C++ chessai.exe не собран. Запусти START_CHESS_AI.bat.');return
         # The tactical v0.7.1 GUI accidentally dropped the focus handoff
@@ -308,6 +320,7 @@ class App(Workspace):
             messagebox.showerror('Не удалось активировать Chess.com',str(exc))
             self.logline('Локальное самообучение (если запущено) не остановлено.')
             return
+        self._actual_model_label=None
         self._active_external=external;self._active_fixed=external or candidate;self._active_selection=selection
         self.logline('Выбранная модель: '+entry['label']+' · '+entry['architecture'])
         self.logline('Внешний UCI: '+selection+' · '+self.external_profile.get() if external else 'Vision: переключение нейросетей во время партии включено')
@@ -327,7 +340,7 @@ class App(Workspace):
                                phantom_opening=chosen_phantom,
                                analysis_level=chosen_level,
                                session_factory=factory,recovery_enabled=True,store_factory=store_factory,
-                               external_authorized=external)
+                               external_authorized=external,model_display=entry['name']+(' v'+entry['version'] if entry.get('version') else ''))
             self.bot=bot
             if getattr(self,'agent_pending_on_start',None) and not (external or candidate):
                 bot.request_agent_switch(self.agent_pending_on_start)

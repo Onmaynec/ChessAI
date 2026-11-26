@@ -12,7 +12,7 @@ ALIASES={
     'skillboost_v2.pt':('ChessNet SkillBoost II','Тактика, дебюты и защита','specialist',None),
     'aggressive.pt':('ChessNet Aggressive','Атакующая специализация','specialist',None),
     'defender.pt':('ChessNet Defender','Защитная специализация','specialist',None),
-    'phantom.pt':('ChessNet Phantom X23','Дебютная специализация','specialist',None),
+    'phantom.pt':('ChessNet Phantom-X23','Дебютная специализация','specialist',None),
     'lasttest.pt':('ChessNet Previous Test','Старая тестовая копия','archive',None),
     'skillboost.pt':('ChessNet SkillBoost I','Предыдущая специализация','archive',None),
 }

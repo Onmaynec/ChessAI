@@ -274,7 +274,7 @@ class Workspace:
         self.model_hint=self.ctk.CTkFrame(row,fg_color=FIELD,corner_radius=7)
         self.label(self.model_hint,'Выбранная модель','Selected model',size=10,color=MUTED).pack(anchor='w',padx=8,pady=(2,0))
         self.model_hint_text=StableStringVar(value='')
-        self.label(self.model_hint,variable=self.model_hint_text,size=11).pack(anchor='w',padx=8,pady=(0,2))
+        self.label(self.model_hint,variable=self.model_hint_text,size=11,wrap=180).pack(anchor='w',padx=8,pady=(0,2))
         from external_core.uci import PROFILES
         profile_row=self.row(c)
         self.choice(profile_row,'Мощность UCI','UCI performance',self.external_profile,[(n,n,n) for n in PROFILES],lock=True)
@@ -763,7 +763,7 @@ class Workspace:
         if active!=self._active:
             self._active=active
             for w in self._locked+[self.start,self.attach]:w.configure(state='disabled' if active else 'normal')
-        self.model_status.set(self.tr('Модель: ','Model: ')+self.selected_model_label())
+        self.model_status.set(self.tr('Модель: ','Model: ')+((self._actual_model_label or self.selected_model_label()) if active else self.selected_model_label()))
         self.side_status.set(self.tr('Сторона: ','Side: ')+(self.tr('Белые','White') if self.color.get()=='white' else self.tr('Чёрные','Black')))
         self.region_status.set(self.tr('Доска: ','Board: ')+(f'{self.rect[2]} × {self.rect[2]}' if self.rect else '—'))
         import time

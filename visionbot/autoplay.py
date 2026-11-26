@@ -207,7 +207,7 @@ class VisionAutoplay:
                  *, resume: bool = True, recovery_enabled: bool | None = None,
                  attach_any_position: bool = False, explicit_turn: str | None = None,
                  analysis_level: str = 'standard', browser_window=None, phantom_opening: bool=False,
-                 store_factory=RecoveryStore, external_authorized=False):
+                 store_factory=RecoveryStore, external_authorized=False, model_display=None):
         self.engine=engine;self.checkpoint=checkpoint;self.run_dir=run_dir
         self.color=color;self.rect=rect;self.report=report;self.stop=stop
         self.device=device;self.screen=screen;self.session_factory=session_factory
@@ -220,6 +220,7 @@ class VisionAutoplay:
         self.browser_window=browser_window
         self.store_factory=store_factory
         self.external_authorized=bool(external_authorized)
+        self.model_display=model_display
         self._agent_lock=threading.Lock()
         self._queued_agent=None
         # Test-injected mock sessions do not necessarily support the C++ journal.
@@ -244,6 +245,8 @@ class VisionAutoplay:
                 with self._agent_lock:self._queued_agent=target
                 return
             result=sess.switch_agent(self.run_dir/'checkpoints'/target,store=store)
+            from neural.model_catalog import ALIASES as MODEL_NAMES
+            self.report('[MODEL_IDENTITY] '+MODEL_NAMES.get(target,(target,))[0]+' · r-'+result['sha256'][:10])
             self.report(f"АГЕНТ ПЕРЕКЛЮЧЁН: {result['checkpoint']} | стиль {result['style']} "
                         f"| полуходов {result['plies']} | FEN {result['fen']}")
         except (FileNotFoundError,ValueError,RuntimeError,OSError) as exc:
@@ -484,6 +487,8 @@ class VisionAutoplay:
                 self.report('Дебютная книга: '+('Фантом-X23 (только белые; при отклонении обычный поиск)' if chosen_book=='phantom' else 'обычная'))
                 self.report('Активный агент: '+logical_name+
                             (' · '+sess.agent_profile.search_style if sess.agent_profile else ' · balanced'))
+            if self.model_display and getattr(sess,'checkpoint_hash',None):
+                self.report('[MODEL_IDENTITY] '+self.model_display+' · r-'+sess.checkpoint_hash[:10])
             self.report('Vision v0.7.6: расширенный журнал и углублённый анализ включены')
             if self.external_authorized:self.report('Внешний UCI: '+sess.label+' · '+sess.profile)
             else:self.report('Режим расчёта: '+('выборочный поиск до 7 полуходов' if self.analysis_level=='deep' else 'обычный поиск до 5 полуходов'))
