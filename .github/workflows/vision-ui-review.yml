@@ -14,6 +14,8 @@ on:
       - 'tests/test_vision_board_projection.py'
       - 'tests/test_vision_workspace_preferences.py'
       - 'tests/test_vision_motion_design.py'
+      - 'tests/test_vision_performance.py'
+      - 'tools/vision_ui_benchmark.py'
       - 'tools/vision_qt_capture.py'
       - 'RUN_VISION_QT_PREVIEW_WINDOWS.bat'
       - 'requirements-vision-qt.txt'
@@ -30,7 +32,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: Syntax check
-        run: python -m compileall -q visionbot tools/vision_ui_capture.py tests/test_vision_ui_design.py tests/test_vision_presentation_rules.py tests/test_vision_ui_controller.py tests/test_vision_qt_viewmodel.py tests/test_vision_qt_preview.py tests/test_vision_board_projection.py tests/test_vision_workspace_preferences.py tests/test_vision_motion_design.py tools/vision_qt_capture.py
+        run: python -m compileall -q visionbot tools/vision_ui_capture.py tests/test_vision_ui_design.py tests/test_vision_presentation_rules.py tests/test_vision_ui_controller.py tests/test_vision_qt_viewmodel.py tests/test_vision_qt_preview.py tests/test_vision_board_projection.py tests/test_vision_workspace_preferences.py tests/test_vision_motion_design.py tests/test_vision_performance.py tools/vision_ui_benchmark.py tools/vision_qt_capture.py
       - name: Pure presentation tests
         run: |
           python -m unittest discover -s tests -p test_vision_ui_design.py -v
@@ -40,6 +42,7 @@ jobs:
           python -m unittest discover -s tests -p test_vision_board_projection.py -v
           python -m unittest discover -s tests -p test_vision_workspace_preferences.py -v
           python -m unittest discover -s tests -p test_vision_motion_design.py -v
+          python -m unittest discover -s tests -p test_vision_performance.py -v
   qt-bindings:
     runs-on: windows-latest
     steps:
