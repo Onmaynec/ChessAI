@@ -4,7 +4,7 @@ import QtQuick.Layouts
 
 ColumnLayout {
     spacing: 8
-    Label { text: sourceLabel; color: theme.warning; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight }
+    Label { text: sourceLabel; color: theme.warning; font.pixelSize: Math.round(11 * workspaceModel.textScale / 100); Layout.fillWidth: true; elide: Text.ElideRight }
     Label { text: "Локальная телеметрия"; color: theme.muted; Layout.fillWidth: true }
     RowLayout {
         Layout.fillWidth: true
