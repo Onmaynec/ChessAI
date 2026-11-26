@@ -1,7 +1,6 @@
 """Qt-native session preparation and local telemetry workspace.
 
-No Tk imports. Session execution remains in the legacy host until its native
-window safety and calibration contracts are verified for Qt on Windows.
+No Tk imports. Native session execution is delegated to QtSession.
 """
 from pathlib import Path
 from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl
