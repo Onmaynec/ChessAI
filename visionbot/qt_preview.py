@@ -77,7 +77,9 @@ def create_engine(controller, journal, source, preferences_path=None):
         'dim': design.DIM, 'accent': design.ACCENT, 'hover': design.HOVER,
         'active': design.ACTIVE, 'green': design.GREEN, 'red': design.RED,
         'warning': design.WARNING, 'font': design.FONT, 'mono': design.MONO,
-        'radius': design.RADIUS,
+        'radius': design.RADIUS, 'typeScale': design.TYPE_SCALE,
+        'motion': design.MOTION, 'surfaceHover': design.SURFACE_HOVER,
+        'track': design.TRACK,
     })
     engine.load(QUrl.fromLocalFile(str(Path(__file__).with_name('qml')/'Main.qml')))
     return engine, model
