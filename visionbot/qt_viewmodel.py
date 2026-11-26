@@ -6,23 +6,28 @@ exposed. Import this module only in an environment with PySide6 installed.
 from PySide6.QtCore import QObject, Property, Signal, Slot
 from .ui_controller import VisionUiController
 from .board_projection import BoardHistory
+from .journal_index import JournalIndex, CATEGORIES
 
 class VisionViewModel(QObject):
     sessionChanged = Signal()
     analysisChanged = Signal()
     journalChanged = Signal()
     boardChanged = Signal()
+    boardCellsChanged = Signal()
+    journalFilterChanged = Signal()
 
     def __init__(self, controller: VisionUiController, parent=None):
         super().__init__(parent)
         self.controller = controller
         self._session = controller.session
         self._analysis = controller.analysis
-        self._journal = []
+        self._journal = JournalIndex()
         self._visible = []
         self._journal_query = ''
         self._journal_category = 'all'
         self._board = BoardHistory()
+        self._board_view = self._board.view()
+        self._board_cells = self._board_view['cells']
 
     @Property(str, notify=sessionChanged)
     def phase(self):
@@ -70,11 +75,23 @@ class VisionViewModel(QObject):
 
     @Property(int, notify=journalChanged)
     def journalTotal(self):
-        return len(self._journal)
+        return self._journal.total
 
     @Property('QVariantMap', notify=boardChanged)
     def boardView(self):
-        return self._board.view()
+        return self._board_view
+
+    @Property('QVariantList', notify=boardCellsChanged)
+    def boardCells(self):
+        return self._board_cells
+
+    def _publish_board(self):
+        view = self._board.view()
+        if view['cells'] != self._board_cells:
+            self._board_cells = view['cells']
+            self.boardCellsChanged.emit()
+        self._board_view = view
+        self.boardChanged.emit()
 
     @Property(int, notify=boardChanged)
     def historyCount(self):
@@ -90,44 +107,47 @@ class VisionViewModel(QObject):
 
     @Slot(int)
     def goHistory(self, index):
-        self._board.go(index)
-        self.boardChanged.emit()
+        if self._board.index != index:
+            self._board.go(index)
+            self._publish_board()
 
     @Slot()
     def flipBoard(self):
         self._board.black = not self._board.black
-        self.boardChanged.emit()
+        self._publish_board()
 
     @Slot(str)
     def selectCandidate(self, move):
-        if self._board.select(move):
-            self.boardChanged.emit()
+        if move != self._board.selected and self._board.select(move):
+            self._publish_board()
 
     def set_journal(self, events):
         events = list(events)[-600:]
         self._board.replace(e.analysis for e in events)
-        self.boardChanged.emit()
-        self._journal = [{'category': e.category, 'text': e.text} for e in events][-600:]
-        self.filterJournal('', 'all')
+        self._publish_board()
+        self._journal.replace(events)
+        self.filterJournal(self._journal_query, self._journal_category, force=True)
 
-    @Property(str, notify=journalChanged)
+    @Property(str, notify=journalFilterChanged)
     def journalQuery(self):
         return self._journal_query
 
-    @Property(str, notify=journalChanged)
+    @Property(str, notify=journalFilterChanged)
     def journalCategory(self):
         return self._journal_category
 
     @Slot(str, str)
-    def filterJournal(self, query, category):
+    def filterJournal(self, query, category, force=False):
+        category = category if category in CATEGORIES else 'all'
+        changed = (query,category) != (self._journal_query,self._journal_category)
         self._journal_query = query
-        self._journal_category = category if category in ('all','analysis','move','error','info') else 'all'
-        category = self._journal_category
-        q = query.casefold().strip()
-        self._visible = [row for row in self._journal
-                         if (category == 'all' or row['category'] == category)
-                         and (not q or q in row['text'].casefold())]
-        self.journalChanged.emit()
+        self._journal_category = category
+        if changed:
+            self.journalFilterChanged.emit()
+        result = self._journal.filter(query,category)
+        if force or result != self._visible:
+            self._visible = result
+            self.journalChanged.emit()
 
     @Slot()
     def refresh(self):
