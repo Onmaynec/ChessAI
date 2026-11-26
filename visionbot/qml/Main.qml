@@ -20,7 +20,7 @@ ApplicationWindow {
     property string mode: "standard"
     property bool pinned: false
     property bool initialized: false
-    readonly property bool wide: width >= 1000
+    readonly property bool wide: width >= (workspaceModel.textScale > 100 ? 1120 : 1000)
     readonly property bool compactMode: mode === "compact"
     readonly property var pages: ["Обзор", "Анализ", "Журнал", "Настройки", "Компоненты"]
 
@@ -92,11 +92,11 @@ ApplicationWindow {
         implicitHeight: root.compactMode ? 48 : 64
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 20
-            anchors.rightMargin: 20
-            spacing: 12
-            Label { text: "VISION BOT"; font.weight: Font.Bold; font.pixelSize: Math.round(18 * workspaceModel.textScale / 100); color: theme.text }
-            Label { text: appVersion; visible: !root.compactMode; color: theme.muted; font.pixelSize: Math.round(12 * workspaceModel.textScale / 100) }
+            anchors.leftMargin: root.compactMode ? 10 : 16
+            anchors.rightMargin: root.compactMode ? 10 : 16
+            spacing: 8
+            Label { text: "VISION BOT"; Layout.fillWidth: root.compactMode; elide: Text.ElideRight; font.weight: Font.Bold; font.pixelSize: Math.round(18 * workspaceModel.textScale / 100); color: theme.text }
+            Label { text: appVersion; visible: !root.compactMode && root.width >= 720; color: theme.muted; font.pixelSize: Math.round(12 * workspaceModel.textScale / 100) }
             Item { Layout.fillWidth: true }
             ComboBox {
                 id: modePicker
@@ -104,7 +104,7 @@ ApplicationWindow {
                 property var keys: ["compact","standard","expanded"]
                 currentIndex: Math.max(0,keys.indexOf(root.mode))
                 onActivated: root.switchMode(keys[currentIndex])
-                Layout.preferredWidth: 114
+                Layout.preferredWidth: Math.round(114 * workspaceModel.textScale / 100)
                 palette.button: theme.field
                 palette.buttonText: theme.text
                 palette.base: theme.panel
@@ -115,6 +115,8 @@ ApplicationWindow {
             }
             Label {
                 visible: !root.compactMode
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: sourceLabel
                 color: theme.warning
                 font.pixelSize: Math.round(11 * workspaceModel.textScale / 100)
@@ -146,6 +148,7 @@ ApplicationWindow {
             color: theme.panel
             Layout.fillHeight: true
             Layout.preferredWidth: root.wide ? 208 : Math.round(116 * workspaceModel.textScale / 100)
+            Layout.minimumWidth: 0
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
@@ -174,6 +177,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             currentIndex: root.page
             onCurrentIndexChanged: {
+                if (!root.initialized) return
                 pageFade.stop()
                 opacity = 1
                 if (root.initialized && !workspaceModel.reducedMotion && !root.compactMode) {
@@ -191,8 +195,10 @@ ApplicationWindow {
                 id: overview
                 clip: true
                 contentWidth: availableWidth
+                contentHeight: overviewContent.implicitHeight + 40
                 ColumnLayout {
-                    width: overview.availableWidth - 40
+                    id: overviewContent
+                    width: Math.max(1,overview.availableWidth - 40)
                     x: 20
                     y: 20
                     spacing: 16
@@ -229,7 +235,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         columnSpacing: 12
                         rowSpacing: 12
-                        PositionPanel { Layout.fillWidth: true; Layout.preferredWidth: 500; Layout.alignment: Qt.AlignTop }
+                        PositionPanel { Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 500; Layout.alignment: Qt.AlignTop }
                         VariationPanel { visible: root.mode === "expanded"; Layout.fillWidth: true; Layout.preferredWidth: 260; Layout.alignment: Qt.AlignTop }
                     }
                     UiButton { text: "Подробный анализ"; onClicked: root.page = 1; Layout.alignment: Qt.AlignLeft }
@@ -241,8 +247,10 @@ ApplicationWindow {
                 id: analysisPage
                 clip: true
                 contentWidth: availableWidth
+                contentHeight: analysisContent.implicitHeight + 40
                 ColumnLayout {
-                    width: analysisPage.availableWidth - 40
+                    id: analysisContent
+                    width: Math.max(1,analysisPage.availableWidth - 40)
                     x: 20
                     y: 20
                     spacing: 16
@@ -252,8 +260,8 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         columnSpacing: 12
                         rowSpacing: 12
-                        PositionPanel { Layout.fillWidth: true; Layout.alignment: Qt.AlignTop; Layout.preferredWidth: 490 }
-                        VariationPanel { Layout.fillWidth: true; Layout.alignment: Qt.AlignTop; Layout.preferredWidth: 260 }
+                        PositionPanel { Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.alignment: Qt.AlignTop; Layout.preferredWidth: 490 }
+                        VariationPanel { Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.alignment: Qt.AlignTop; Layout.preferredWidth: 260 }
                     }
                     GridLayout {
                         columns: root.wide ? 2 : 1
@@ -268,7 +276,7 @@ ApplicationWindow {
                     Surface {
                         Layout.fillWidth: true
                         contentItem: ColumnLayout {
-                            Label { text: "FEN выбранной записи"; color: theme.text; font.pixelSize: Math.round(16 * workspaceModel.textScale / 100) }
+                            Label { text: "FEN выбранной записи"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.text; font.pixelSize: Math.round(16 * workspaceModel.textScale / 100) }
                             TextArea {
                                 text: visionModel.boardView.fen || "Нет данных"
                                 readOnly: true
@@ -294,8 +302,10 @@ ApplicationWindow {
                 id: settingsPage
                 clip: true
                 contentWidth: availableWidth
+                contentHeight: settingsContent.implicitHeight + 40
                 ColumnLayout {
-                    width: settingsPage.availableWidth - 40
+                    id: settingsContent
+                    width: Math.max(1,settingsPage.availableWidth - 40)
                     x: 20
                     y: 20
                     spacing: 16
@@ -364,8 +374,10 @@ ApplicationWindow {
         visible: root.compactMode
         clip: true
         contentWidth: availableWidth
+                contentHeight: compactContent.implicitHeight + 16
         ColumnLayout {
-            width: compactScroll.availableWidth - 20
+                    id: compactContent
+            width: Math.max(1,compactScroll.availableWidth - 20)
             x: 10; y: 8
             spacing: 8
             CompactPanel { Layout.fillWidth: true }
