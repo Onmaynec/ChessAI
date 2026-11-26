@@ -14,7 +14,11 @@
 
 </div>
 
-## Vision Bot 0.9.11 — Visual QA & Final Refinement (Qt preview)
+## Vision Bot 0.10.0 — Reborn (Qt Quick migration candidate)
+
+Новая основная точка входа `python -m visionbot.gui` использует Qt Quick; запуск через `START_VISION_REBORN.bat`. Выбор реального run/checkpoint, калибровка Qt, подключение существующего worker для разрешённого компьютерного теста, телеметрия и журнал. Старый GUI доступен только отдельно: `START_VISION_LEGACY.bat` / `--legacy`. Нативная проверка Windows и функциональная полнота не подтверждены. [Запуск и ограничения](docs/VISION_REBORN_010.md).
+
+### Vision Bot 0.9.11 — Visual QA & Final Refinement (Qt preview)
 
 Исправления компоновки, 30 сценариев захвата, проверяемый JSON-отчёт, сбор предупреждений QML и критерии приёмки. Рабочая Qt-миграция ещё не завершена. [Инструкция по приёмке](docs/VISION_UI_QA_0911.md).
 
