@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -12,14 +13,15 @@ ApplicationWindow {
     title: panelTitle + " · " + sourceLabel
     color: theme.bg
     visible: false
-    minimumWidth: 300
-    minimumHeight: 240
+    transientParent: null
+    minimumWidth: panelKey === 'metrics' ? 300 : 320
+    minimumHeight: panelKey === 'board' ? 340 : panelKey === 'metrics' ? 240 : 260
     font.family: theme.font
     font.pixelSize: 13
     flags: Qt.Window | (pinned ? Qt.WindowStaysOnTopHint : 0)
 
     function remember() {
-        if (initialized && visibility !== Window.Minimized && visibility !== Window.Maximized)
+        if (initialized && visibility === Window.Windowed)
             workspaceModel.record(panelKey, x, y, width, height)
     }
     function openPanel() {
@@ -33,7 +35,7 @@ ApplicationWindow {
         show()
         raise()
     }
-    onClosing: function(close) { remember() }
+    onClosing: function(close) { saveTimer.stop(); remember() }
     Timer {
         id: saveTimer
         interval: 400
