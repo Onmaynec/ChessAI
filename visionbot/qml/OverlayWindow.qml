@@ -17,7 +17,7 @@ ApplicationWindow {
     minimumWidth: panelKey === 'metrics' ? 300 : 320
     minimumHeight: panelKey === 'board' ? 340 : panelKey === 'metrics' ? 240 : 260
     font.family: theme.font
-    font.pixelSize: 13
+    font.pixelSize: theme.typeScale.body
     flags: Qt.Window | (pinned ? Qt.WindowStaysOnTopHint : 0)
 
     function remember() {
