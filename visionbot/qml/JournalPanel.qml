@@ -13,6 +13,7 @@ ColumnLayout {
         Layout.fillWidth: true
         text: visionModel.journalQuery
         placeholderText: "Поиск по событиям"
+        Accessible.name: "Поиск по журналу"
         color: theme.text
         placeholderTextColor: theme.dim
         selectByMouse: true
@@ -21,6 +22,7 @@ ColumnLayout {
     }
     ComboBox {
         id: filter
+        Accessible.name: "Категория журнала"
         Layout.fillWidth: true
         model: ["Все", "Анализ", "Ходы", "Ошибки", "Информация"]
         property var keys: ["all","analysis","move","error","info"]
@@ -46,6 +48,10 @@ ColumnLayout {
             anchors.fill: parent
             anchors.margins: 6
             clip: true
+            reuseItems: true
+            activeFocusOnTab: true
+            keyNavigationEnabled: true
+            Accessible.name: "Список событий"
             model: visionModel.journal
             spacing: 2
             ScrollBar.vertical: ScrollBar {}
@@ -53,14 +59,16 @@ ColumnLayout {
                 required property var modelData
                 width: Math.max(1,list.width-12)
                 height: eventRow.implicitHeight + 16
-                color: theme.field
+                color: ListView.isCurrentItem && list.activeFocus ? theme.active : theme.field
+                border.width: ListView.isCurrentItem && list.activeFocus ? 1 : 0
+                border.color: theme.accent
                 RowLayout {
                     id: eventRow
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: 8
-                    Label { text: modelData.category.toUpperCase(); color: modelData.category === "error" ? theme.red : theme.muted; font.pixelSize: 10; Layout.preferredWidth: 60 }
+                    Label { text: modelData.category.toUpperCase(); color: modelData.category === "error" ? theme.red : theme.muted; font.pixelSize: Math.round(10 * workspaceModel.textScale / 100); Layout.preferredWidth: Math.round(66 * workspaceModel.textScale / 100) }
                     Label { text: modelData.text; textFormat: Text.PlainText; color: theme.text; wrapMode: Text.WrapAnywhere; Layout.fillWidth: true }
                 }
             }
