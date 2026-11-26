@@ -23,7 +23,7 @@ ScrollView {
             Layout.fillWidth: true
             contentItem: ColumnLayout {
                 spacing: 12
-                Label { text: "01 / Controls"; color: theme.text; font.pixelSize: theme.typeScale.section; font.weight: Font.DemiBold }
+                Label { text: "01 / Controls"; color: theme.text; font.pixelSize: Math.round(theme.typeScale.section * workspaceModel.textScale / 100); font.weight: Font.DemiBold }
                 Flow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: implicitHeight
@@ -49,7 +49,7 @@ ScrollView {
             Layout.fillWidth: true
             contentItem: ColumnLayout {
                 spacing: 10
-                Label { text: "02 / Semantic status"; color: theme.text; font.pixelSize: theme.typeScale.section; font.weight: Font.DemiBold }
+                Label { text: "02 / Semantic status"; color: theme.text; font.pixelSize: Math.round(theme.typeScale.section * workspaceModel.textScale / 100); font.weight: Font.DemiBold }
                 StatusLabel { label: "Ожидание"; tone: "neutral"; Layout.fillWidth: true }
                 StatusLabel { label: "Готово"; tone: "success"; Layout.fillWidth: true }
                 StatusLabel { label: "Требуется внимание"; tone: "warning"; Layout.fillWidth: true }
@@ -60,7 +60,7 @@ ScrollView {
             Layout.fillWidth: true
             contentItem: ColumnLayout {
                 spacing: 10
-                Label { text: "03 / Typography"; color: theme.text; font.pixelSize: theme.typeScale.section; font.weight: Font.DemiBold }
+                Label { text: "03 / Typography"; color: theme.text; font.pixelSize: Math.round(theme.typeScale.section * workspaceModel.textScale / 100); font.weight: Font.DemiBold }
                 Repeater {
                     model: [{name:"Heading",size:theme.typeScale.heading},{name:"Section",size:theme.typeScale.section},{name:"Body",size:theme.typeScale.body},{name:"Caption",size:theme.typeScale.caption}]
                     delegate: Label {
@@ -78,7 +78,7 @@ ScrollView {
             Layout.fillWidth: true
             contentItem: ColumnLayout {
                 spacing: 10
-                Label { text: "04 / Palette"; color: theme.text; font.pixelSize: theme.typeScale.section; font.weight: Font.DemiBold }
+                Label { text: "04 / Palette"; color: theme.text; font.pixelSize: Math.round(theme.typeScale.section * workspaceModel.textScale / 100); font.weight: Font.DemiBold }
                 Repeater {
                     model: [{name:"Background",value:theme.bg},{name:"Surface",value:theme.panel},{name:"Control",value:theme.field},{name:"Border",value:theme.border},{name:"Text",value:theme.text},{name:"Muted",value:theme.muted}]
                     delegate: RowLayout {
