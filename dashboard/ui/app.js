@@ -18,11 +18,12 @@ function graph(container, values, {accent='#fff',height=245,unit='',ymin=null,it
   const all=values.map((v,i)=>({x:iterations?.[i]??i+1,y:v==null||v===''||!Number.isFinite(Number(v))?null:Number(v)}));
   const range=container.id==='main-chart'&&$('chart-range').value!=='all'?Number($('chart-range').value):all.length;
   const rows=all.slice(-range), valid=rows.filter(r=>r.y!==null);
-  const signature=JSON.stringify([rows,accent,height,ymin]);
+  const w=Math.max(240,container.clientWidth||780),h=Math.max(100,container.clientHeight||height);
+  const signature=JSON.stringify([rows,accent,w,h,ymin,unit]);
   if(graphState.get(container)?.signature===signature)return;
-  graphState.set(container,{signature});
+  graphState.set(container,{signature,values,options:{accent,height,unit,ymin,iterations}});
   if(!valid.length){container.innerHTML='<div class="empty-chart">Для графика пока недостаточно данных.</div>';container.removeAttribute('tabindex');container.removeAttribute('aria-label');container.onfocus=container.onblur=container.onkeydown=null;return}
-  const w=780,h=height,l=64,r=20,t=25,b=30;
+  const l=w<400?50:64,r=14,t=20,b=27;
   let lo=ymin??Math.min(...valid.map(x=>x.y)),hi=Math.max(...valid.map(x=>x.y));
   const spread=Math.max((hi-lo)*.12,Math.abs(hi)*.01,.000001);
   hi+=spread;if(ymin===null)lo-=spread;if(hi<=lo)hi=lo+spread;
@@ -97,12 +98,12 @@ function renderOverview(d){
   const ac=aw+al+ad;
   $('arena-score').textContent=ac?num(100*(aw+.5*ad)/ac,1)+'%':'—';
   $('arena-hint').textContent=ac?`Счёт по завершённым партиям, n = ${fmt(ac)}`:'Нет завершённых проверочных партий';
-  $('arena-wld').textContent=`В: ${fmt(aw)} · Н: ${fmt(ad)} · П: ${fmt(al)}`;
-  $('arena-size').textContent=`${fmt(ap)} проведено · ${fmt(ap-ac)} не окончено`;
+  $('arena-wld').textContent=m.length?`В: ${fmt(aw)} · Н: ${fmt(ad)} · П: ${fmt(al)}`:'В: — · Н: — · П: —';
+  $('arena-size').textContent=m.length?`${fmt(ap)} проведено · ${fmt(ap-ac)} не окончено`:'Нет данных';
   $('arena-caption').textContent='vs. frozen v0.2';
   $('recent-games').innerHTML=d.games.length?d.games.slice(0,6).map(g=>`<tr><td>#${g.game_id} <small> / ${g.iteration}</small></td><td><span class="result-pill ${classResult(g.result)}">${esc(resultNames[g.result]||g.result)}</span></td><td>${esc(reasonNames[g.reason]||g.reason)}</td><td>${fmt(g.plies)}</td><td><button class="table-button view-game" data-id="${g.game_id}" data-kind="selfplay">Просмотр →</button></td></tr>`).join(''):'<tr><td colspan="5" class="table-empty">Партии пока отсутствуют</td></tr>';
   if(application.screen==='runs')renderRuns();
-  const sync=$('sync-label').parentElement;sync.classList.toggle('stale',accessWarnings.length>0);sync.classList.remove('disconnected');
+  const sync=$('sync-label').parentElement;sync.classList.toggle('stale',accessWarnings.length>0);sync.classList.remove('disconnected','pending');
 }
 function renderRuns(){const d=application.overview;if(!d)return;
   $('run-list').innerHTML=d.runs.length?d.runs.map(r=>`<article class="run-card ${r.id===d.selected?'current':''}" data-run="${esc(r.id)}"><span class="status-badge ${esc(r.status)}">${esc(statusNames[r.status]||r.status)}</span><h2>${esc(r.name)}</h2><p>${esc(r.created_at?.replace('T',' ').replace('+00:00',' UTC')||'Дата неизвестна')}</p><div class="run-totals"><span><b>${fmt(r.iteration)}</b> итераций</span><span><b>${fmt(r.games)}</b> партий</span></div></article>`).join(''):'<div class="panel empty-panel">Пока нет экспериментов. Нажмите «Создать запуск».</div>';
@@ -172,8 +173,8 @@ async function refresh(){if(application.inFlight)return;application.inFlight=tru
   $('engine-led').className='led '+(h.engine_ready?'ok':'bad');$('engine-text').textContent=h.engine_ready?'Chess Core доступен':'C++ ядро не собрано';
   // If a run was deleted externally, recover to most recent.
   if(!d.selected && application.selected) application.selected=null;
-  renderOverview(d);$('stop-btn').disabled=false;$('resume-btn').disabled=false;$('sync-label').title+='\nОбновлено: '+new Date().toLocaleTimeString('ru-RU');
-}catch(e){$('sync-label').textContent='Нет связи · данные устарели';$('sync-label').parentElement.classList.add('disconnected');$('open-config').disabled=true;$('runs-new').disabled=true;$('stop-btn').disabled=true;$('resume-btn').disabled=true;}finally{application.inFlight=false}}
+  renderOverview(d);$('stop-btn').disabled=false;$('resume-btn').disabled=false;const updated=new Date().toLocaleTimeString('ru-RU');$('sync-label').title+='\nОбновлено: '+updated;$('footer-sync').textContent=(d.file_warnings?.length?'Кэш · ':'Локальные данные · ')+'обновлено '+updated;
+}catch(e){$('sync-label').textContent='Нет связи · данные устарели';$('sync-label').parentElement.classList.add('disconnected');$('sync-label').parentElement.classList.remove('pending');$('footer-sync').textContent='Нет связи · показаны последние доступные данные';$('open-config').disabled=true;$('runs-new').disabled=true;$('stop-btn').disabled=true;$('resume-btn').disabled=true;}finally{application.inFlight=false}}
 function configModal(open){application.overlayOpen=open;$('config-overlay').classList.toggle('hidden',!open);$('config-overlay').setAttribute('aria-hidden',String(!open));if(open)$('c-iterations').focus()}
 const presets={quick:{iterations:2,games:2,parallel:2,plies:140,temp:1.1,arena:0,opening:0},balanced:{iterations:10,games:8,parallel:4,plies:240,temp:1.1,arena:2,opening:6},long:{iterations:100,games:16,parallel:8,plies:300,temp:1.1,arena:4,opening:6}};
 function applyPreset(name){const p=presets[name];if(!p)return;qsa('[data-preset]').forEach(b=>b.classList.toggle('chosen',b.dataset.preset===name));for(const k of Object.keys(p))$('c-'+k).value=p[k]}
@@ -334,3 +335,9 @@ poll();
 $('resume-form').onsubmit=submitResume;
 for(const id of ['resume-close','resume-cancel'])$(id).onclick=()=>{if(!$('resume-submit').disabled)$('resume-dialog').close()};
 $('resume-dialog').addEventListener('cancel',e=>{if($('resume-submit').disabled)e.preventDefault()});
+
+// Geometry-only refresh: no additional API polling on window resizing or screen switches.
+if(typeof ResizeObserver==='function'){
+  const observer=new ResizeObserver(entries=>{for(const entry of entries){const el=entry.target,state=graphState.get(el);if(!state||!el.clientWidth||!el.clientHeight)continue;graph(el,state.values,state.options)}});
+  for(const id of ['main-chart','speed-chart','completion-chart','analysis-value-chart'])observer.observe($(id));
+}
