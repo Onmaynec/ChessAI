@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+TEXT_SCALES = (100, 115, 130)
+
 MODES = ('compact', 'standard', 'expanded')
 PANELS = ('metrics', 'board', 'analysis', 'journal')
 DEFAULT_SIZE = {'compact': (360, 300), 'standard': (1040, 720), 'expanded': (1440, 900),
@@ -49,6 +51,8 @@ def clean(data):
     # Optional field: preserve the original schema for older settings.
     if type(data.get('reduced_motion')) is bool:
         result['reduced_motion'] = data['reduced_motion']
+    if type(data.get('text_scale')) is int and data['text_scale'] in TEXT_SCALES:
+        result['text_scale'] = data['text_scale']
     if data.get('mode') in MODES:
         result['mode'] = data['mode']
     windows = data.get('windows')
@@ -102,6 +106,12 @@ class WorkspacePreferences:
             self.data['mode'] = mode
             return True
         return False
+
+    def set_text_scale(self, value):
+        if type(value) is not int or value not in TEXT_SCALES:
+            return False
+        self.data['text_scale'] = value
+        return True
 
     def set_reduced_motion(self, value):
         if type(value) is not bool:
