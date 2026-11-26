@@ -28,7 +28,7 @@ Surface {
             Layout.alignment: Qt.AlignHCenter
         }
         Label {
-            text: panel.view.evaluation.kind === undefined ? "Оценка недоступна" : "Оценка в пользу белых: " + (panel.view.evaluation.kind === "mate" ? "M" : "") + (panel.view.evaluation.value > 0 ? "+" : "") + panel.view.evaluation.value + (panel.view.evaluation.kind === "cp" ? " cp" : "")
+            text: panel.view.evaluation.kind === undefined ? "Оценка недоступна" : "Оценка с точки зрения белых: " + (panel.view.evaluation.kind === "mate" ? "M" : "") + (panel.view.evaluation.value > 0 ? "+" : "") + panel.view.evaluation.value + (panel.view.evaluation.kind === "cp" ? " cp" : "")
             color: theme.muted
             font.pixelSize: 12
             Layout.fillWidth: true
