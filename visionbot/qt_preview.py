@@ -10,10 +10,12 @@ from .telemetry import analysis_event
 ROOT = Path(__file__).resolve().parents[1]
 MAX_LINE = 262144
 MAX_EVENTS = 600
+MAX_REPLAY_BYTES = 16 * 1024 * 1024
 
 def replay_messages(path: Path) -> list[str]:
-    """Read the last 600 bounded UTF-8 lines, preserving their order."""
-    messages = deque(maxlen=MAX_EVENTS)
+    """Read the last 600 bounded UTF-8 lines, at most 16 MiB of input, preserving their order."""
+    messages = deque()
+    retained = 0
     with path.open('rb') as stream:
         while True:
             line = stream.readline(MAX_LINE + 1)
@@ -22,10 +24,12 @@ def replay_messages(path: Path) -> list[str]:
             if len(line) > MAX_LINE:
                 while line and not line.endswith(b'\n'):
                     line = stream.readline(MAX_LINE + 1)
-                messages.append('ОШИБКА: oversized replay line skipped')
-            else:
-                messages.append(line.decode('utf-8', errors='replace').rstrip('\r\n'))
-    return list(messages)
+                line = 'ОШИБКА: oversized replay line skipped'.encode('utf-8')
+            messages.append(line)
+            retained += len(line)
+            while len(messages) > MAX_EVENTS or retained > MAX_REPLAY_BYTES:
+                retained -= len(messages.popleft())
+    return [line.decode('utf-8', errors='replace').rstrip('\r\n') for line in messages]
 
 def fixture_messages() -> list[str]:
     return ['QA FIXTURE: synthetic local preview, no running session',
