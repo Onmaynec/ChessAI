@@ -128,19 +128,12 @@ ApplicationWindow {
                         columnSpacing: 10
                         rowSpacing: 10
                         Layout.fillWidth: true
-                        Metric { label: "Последний ход"; value: visionModel.move; detail: "Полученная телеметрия"; Layout.fillWidth: true }
-                        Metric { label: "Оценка"; value: visionModel.score; detail: "Сообщено источником"; Layout.fillWidth: true }
-                        Metric { label: "Глубина"; value: visionModel.depth; detail: "Полуходы"; Layout.fillWidth: true }
+                        Metric { label: "Предложенный ход"; value: visionModel.boardView.move; detail: "Полученная телеметрия"; Layout.fillWidth: true }
+                        Metric { label: "Оценка"; value: visionModel.boardView.score; detail: "Сообщено источником"; Layout.fillWidth: true }
+                        Metric { label: "Глубина"; value: visionModel.boardView.depth; detail: "Полуходы"; Layout.fillWidth: true }
                     }
-                    Surface {
-                        Layout.fillWidth: true
-                        contentItem: ColumnLayout {
-                            spacing: 10
-                            Label { text: "Позиция · FEN"; font.pixelSize: 17; font.weight: Font.DemiBold; color: theme.text }
-                            Label { text: visionModel.fen || "Позиция ещё не получена."; textFormat: Text.PlainText; color: theme.muted; font.family: theme.mono; wrapMode: Text.WrapAnywhere; Layout.fillWidth: true }
-                            UiButton { text: "Подробный анализ"; onClicked: root.page = 1; Layout.alignment: Qt.AlignLeft }
-                        }
-                    }
+                    PositionPanel { Layout.fillWidth: true }
+                    UiButton { text: "Подробный анализ"; onClicked: root.page = 1; Layout.alignment: Qt.AlignLeft }
                     Item { Layout.preferredHeight: 20 }
                 }
             }
@@ -160,17 +153,25 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         columnSpacing: 12
                         rowSpacing: 12
-                        Metric { label: "Оценка"; value: visionModel.score; Layout.fillWidth: true }
-                        Metric { label: "Глубина"; value: visionModel.depth; Layout.fillWidth: true }
-                        Metric { label: "Ожидаемый ответ"; value: visionModel.reply; Layout.fillWidth: true }
-                        Metric { label: "Время расчёта"; value: visionModel.searchTime; Layout.fillWidth: true }
+                        PositionPanel { Layout.fillWidth: true; Layout.alignment: Qt.AlignTop; Layout.preferredWidth: 490 }
+                        VariationPanel { Layout.fillWidth: true; Layout.alignment: Qt.AlignTop; Layout.preferredWidth: 260 }
+                    }
+                    GridLayout {
+                        columns: root.wide ? 2 : 1
+                        Layout.fillWidth: true
+                        columnSpacing: 12
+                        rowSpacing: 12
+                        Metric { label: "Оценка стороны хода"; value: visionModel.boardView.score; Layout.fillWidth: true }
+                        Metric { label: "Глубина"; value: visionModel.boardView.depth; Layout.fillWidth: true }
+                        Metric { label: "Ожидаемый ответ"; value: visionModel.boardView.reply; Layout.fillWidth: true }
+                        Metric { label: "Время расчёта"; value: visionModel.boardView.seconds; Layout.fillWidth: true }
                     }
                     Surface {
                         Layout.fillWidth: true
                         contentItem: ColumnLayout {
-                            Label { text: "Последний известный FEN"; color: theme.text; font.pixelSize: 16 }
+                            Label { text: "FEN выбранной записи"; color: theme.text; font.pixelSize: 16 }
                             TextArea {
-                                text: visionModel.fen || "Нет данных"
+                                text: visionModel.boardView.fen || "Нет данных"
                                 readOnly: true
                                 textFormat: TextEdit.PlainText
                                 selectByMouse: true
