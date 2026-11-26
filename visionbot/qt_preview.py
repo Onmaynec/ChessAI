@@ -58,7 +58,7 @@ def make_controller(messages=(), fixture=False):
             journal.append(event)
     return controller, journal
 
-def create_engine(controller, journal, source, preferences_path=None):
+def create_engine(controller, journal, source, preferences_path=None, *, reborn=False):
     from PySide6.QtCore import QUrl
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuickControls2 import QQuickStyle
@@ -85,7 +85,12 @@ def create_engine(controller, journal, source, preferences_path=None):
         'motion': design.MOTION, 'surfaceHover': design.SURFACE_HOVER,
         'track': design.TRACK,
     })
-    engine.load(QUrl.fromLocalFile(str(Path(__file__).with_name('qml')/'Main.qml')))
+    if reborn:
+        from .reborn_model import RebornModel
+        reborn_model = RebornModel(ROOT, controller, model, engine)
+        context.setContextProperty('rebornModel', reborn_model)
+    entry = 'Reborn.qml' if reborn else 'Main.qml'
+    engine.load(QUrl.fromLocalFile(str(Path(__file__).with_name('qml')/entry)))
     return engine, model
 
 def main():
