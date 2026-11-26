@@ -42,7 +42,9 @@ class BotLabUI:
         self.status = tk.StringVar(value='Партия ещё не началась')
         self.trainer = tk.StringVar(value='Self-play: статус проверяется…')
         self.ai_color = tk.StringVar(value='white')
-        self.checkpoint_choice = tk.StringVar(value='latest.pt')
+        from neural.model_catalog import vision_entries
+        self.catalog={r['label']:r['path'] for r in vision_entries(run_dir) if not r.get('external')}
+        self.checkpoint_choice = tk.StringVar(value=next(iter(self.catalog),''))
         self.opponent = tk.StringVar(value='Chess.com Computer · уровень/имя')
         self.move_input = tk.StringVar()
         self.result = tk.StringVar(value='unfinished')
@@ -70,7 +72,7 @@ class BotLabUI:
         ttk.Radiobutton(row,text='Белые',variable=self.ai_color,value='white').pack(side='left',padx=3)
         ttk.Radiobutton(row,text='Чёрные',variable=self.ai_color,value='black').pack(side='left',padx=4)
         tk.Label(row,text='Модель:',bg=bg,fg=fg).pack(side='left',padx=(8,2))
-        ttk.Combobox(row,textvariable=self.checkpoint_choice,values=['latest.pt','best.pt'],width=11,state='readonly').pack(side='left')
+        ttk.Combobox(row,textvariable=self.checkpoint_choice,values=list(self.catalog),width=28,state='readonly').pack(side='left')
         tk.Label(right,text='Бот на Chess.com:',fg=fg,bg=bg).pack(anchor='w')
         tk.Entry(right,textvariable=self.opponent,bg='#202733',fg=fg,insertbackground=fg,relief='flat').pack(fill='x',ipady=7,pady=(3,8))
         self._button(right,'1. Новая партия / загрузить checkpoint',self.new_game).pack(fill='x',pady=3)
@@ -103,7 +105,7 @@ class BotLabUI:
                          relief='flat',font=('Segoe UI',10),padx=9,pady=8,cursor='hand2')
 
     def checkpoint_path(self):
-        return self.run_dir/'checkpoints'/self.checkpoint_choice.get()
+        return ROOT/self.catalog.get(self.checkpoint_choice.get(),'__missing__')
 
     def new_game(self):
         if self.session and self.session.history:

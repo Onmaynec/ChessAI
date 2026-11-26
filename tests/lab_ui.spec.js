@@ -129,3 +129,14 @@ test('all nine sections: desktop and mobile, empty and populated',async({page})=
  }
  expect(errors).toEqual([]);
 });
+
+test('model registry preserves main features and filters archive',async({page})=>{
+ let calls=0;await page.route('**/api/models',r=>{calls++;return r.fulfill({json:{schema:'model_catalog_v1',models:[{name:'ChessNet Core',label:'ChessNet Core · r-1234567890',status:'active',selectable:true,role:'PPO',architecture:'64×6 CNN',revision:'r-1234567890',sha256:'1234567890',id:'runs/test/checkpoints/latest.pt',path:'runs/test/checkpoints/latest.pt'},{name:'ChessNet Historical',status:'archive',selectable:false,revision:'r-9876543210',id:'runs/test/checkpoints/old.pt'}]}})});
+ await page.goto(root);await page.locator('[data-screen=models]').click();await expect(page.locator('#models-list .catalog-card')).toHaveCount(1);
+ await expect(page.locator('#best-status')).toBeVisible();await expect(page.locator('#models-list')).toContainText('r-1234567890');
+ await page.locator('#models-archive').check();await expect(page.locator('#models-list .catalog-card')).toHaveCount(2);
+ await page.locator('#models-search').fill('Historical');await expect(page.locator('#models-list .catalog-card')).toHaveCount(1);
+ await expect(page.locator('#models-list')).toContainText('ChessNet Historical');await page.locator('#models-refresh').click();await expect.poll(()=>calls).toBe(2);
+ await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth)).toBe(390);
+ await page.screenshot({path:'test-results/final/models-registry-mobile.png',fullPage:true});
+});

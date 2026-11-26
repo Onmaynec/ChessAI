@@ -17,7 +17,7 @@ const api=async(url,opts={})=>{
 };
 function toast(text){const el=$('toast');el.textContent=text;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4800)}
 const researchScreens = new Set(['analysis','evaluation','models','agents','system']);
-function navigate(screen){if(!$('screen-'+screen))return;const changed=screen!==application.screen;application.screen=screen;savePrefs({screen});qsa('.screen').forEach(e=>e.classList.toggle('hidden',e.id!=='screen-'+screen));qsa('.nav-item').forEach(e=>{const active=e.dataset.screen===screen;e.classList.toggle('selected',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')});$('breadcrumb').textContent={overview:'Обзор обучения',games:'Партии и анализ',analysis:'Диагностика модели',runs:'Эксперименты',guide:'Методика',evaluation:'Evaluation',models:'Модели и checkpoint',agents:'Agent Lab',system:'Ресурсы и данные'}[screen];if(changed){researchAt=gamesAt=null}if(screen==='games')loadGames(true);if(screen==='runs'&&application.overview?.selected===application.selected)renderRuns();if(researchScreens.has(screen))loadAnalysis(true);if(changed){window.scrollTo({top:0,behavior:'instant'});$('heading-'+screen)?.focus({preventScroll:true})}}
+function navigate(screen){if(!$('screen-'+screen))return;const changed=screen!==application.screen;application.screen=screen;savePrefs({screen});qsa('.screen').forEach(e=>e.classList.toggle('hidden',e.id!=='screen-'+screen));qsa('.nav-item').forEach(e=>{const active=e.dataset.screen===screen;e.classList.toggle('selected',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')});$('breadcrumb').textContent={overview:'Обзор обучения',games:'Партии и анализ',analysis:'Диагностика модели',runs:'Эксперименты',guide:'Методика',evaluation:'Evaluation',models:'Модели и checkpoint',agents:'Agent Lab',system:'Ресурсы и данные'}[screen];if(changed){researchAt=gamesAt=null}if(screen==='games')loadGames(true);if(screen==='runs'&&application.overview?.selected===application.selected)renderRuns();if(researchScreens.has(screen))loadAnalysis(true);if(screen==='models')loadModels();if(changed){window.scrollTo({top:0,behavior:'instant'});$('heading-'+screen)?.focus({preventScroll:true})}}
 function classResult(result){return result==='1-0'||result==='0-1'?'win':result==='1/2-1/2'?'draw':'pending'}
 const graphState = new WeakMap();
 const LA=globalThis.LabAnalytics;
@@ -143,13 +143,13 @@ function renderOverview(d){
   const old=picker.value;
   const options=d.runs.length ? d.runs.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('') : '<option value="">Нет запусков</option>';
   if(picker.dataset.options!==options){picker.innerHTML=options;picker.dataset.options=options;}
-  application.selected=d.selected||null; if(picker.value!==(d.selected||''))picker.value=d.selected||'';$('global-run').textContent=d.selected||'Эксперимент не выбран';$('global-run').title=d.selected||'Эксперимент не выбран';
+  application.selected=d.selected||null; if(picker.value!==(d.selected||''))picker.value=d.selected||'';picker.title=d.selected||'';$('global-run').textContent=d.selected?(d.runs.find(r=>r.id===d.selected)?.name||d.selected):'Эксперимент не выбран';$('global-run').title=d.selected||'Эксперимент не выбран';
   const st=d.state||{},c=st.counters||{},meta=d.metadata||{},cfg=meta.config||{};
   const state=st.status||'unknown';
   $('overview-device').textContent=st.device||'—';$('overview-iteration').textContent=fmt(st.iteration);$('overview-best').textContent=d.best?.best_iteration!=null?'#'+d.best.best_iteration:(d.best?.origin||'—');$('overview-process').textContent=d.process?.active?(d.process.run||'Запущен'):'Нет активного';
   const isRunning=d.process?.active && d.process.run===d.selected;
   const interrupted=state==='running' && !isRunning;
-  $('run-title').textContent=d.selected ? d.selected : 'Обучение ещё не запускалось';
+  $('run-title').textContent=d.selected ? (d.runs.find(r=>r.id===d.selected)?.name||d.selected) : 'Обучение ещё не запускалось';$('run-title').title=d.selected||'';
   $('run-detail').textContent=d.selected ? `Итерация ${st.iteration||0} · ${st.phase||'ожидание'} · ${st.device||'неизвестно'} · ${fmt(meta.parameters)} параметров` : 'Создайте первый эксперимент, чтобы увидеть реальные показатели.';
   $('status-badge').textContent=d.selected ? (interrupted?'ПРЕРВАНО':statusNames[state]||state) : 'НЕ ЗАПУЩЕНО';$('status-badge').className='status-badge '+(d.selected?(interrupted?'interrupted':state):'');
   $('banner-symbol').textContent=state==='completed'?'✓':state==='failed'?'!':isRunning?'◈':'◎';
@@ -482,6 +482,33 @@ $('replay-flip').onclick=()=>{replayFlipped=!replayFlipped;savePrefs({flipped:re
 $('copy-uci').onclick=()=>{if(application.replay)copyText(application.replay.moves.join(' '))};
 $('replay-play').onclick=playReplay;
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseReplay();else poll(true)});
+let catalogRows=[];let catalogBusy=false;
+const modelStatuses={active:'Рабочая PPO',retained:'Сохранённая лучшая',specialist:'Специализация',candidate:'Экспериментальная',external:'Внешний движок',archive:'Архив',duplicate:'Точная копия файла'};
+async function loadModels(){
+  if(catalogBusy)return;catalogBusy=true;
+  const el=$('models-list');if(!catalogRows.length)el.textContent='Чтение локального каталога и SHA-256…';$('models-refresh').disabled=true;
+  try{const data=await api('/api/models');catalogRows=Array.isArray(data.models)?data.models:[];renderModels()}
+  catch(e){el.textContent='Каталог: '+e.message}finally{catalogBusy=false;$('models-refresh').disabled=false}
+}
+function renderModels(){
+  const show=$('models-archive').checked;
+  const query=$('models-search').value.trim().toLowerCase();
+  const rows=catalogRows.filter(m=>(show||m.selectable)&&(!query||[m.label,m.role,m.architecture,m.source,m.id].join(' ').toLowerCase().includes(query)));
+  $('models-count').textContent=rows.length+' из '+catalogRows.length+' файлов / движков';
+  setHTML($('models-list'),rows.length?rows.map(m=>'<article class="catalog-card">'+
+    '<div class="catalog-top"><span class="catalog-tag">'+esc(modelStatuses[m.status]||m.status)+'</span><span>'+esc(m.version?'v'+m.version:'Без номера релиза')+'</span></div>'+
+    '<h2>'+esc(m.name)+'</h2><p>'+esc(m.role)+'</p>'+
+    '<div class="catalog-meta"><span>Ревизия <b>'+esc(m.revision)+'</b></span><span>Архитектура <b>'+esc(m.architecture)+'</b></span>'+
+    (m.selected_epoch?'<span>Эпоха <b>'+esc(m.selected_epoch)+'</b></span>':'')+
+    (m.validation_top1!=null?'<span>Validation top-1 <b>'+num(100*m.validation_top1,1)+'%</b></span>':'')+
+    (m.trainer_version?'<span>Версия тренера <b>'+esc(m.trainer_version)+'</b></span>':'')+'</div>'+
+    '<details><summary>Технические сведения</summary><p>'+esc(m.path)+'</p><p>SHA-256: '+esc(m.sha256||'проверка не завершена')+'</p><p>'+esc(m.duplicate_of?'Точная копия: '+m.duplicate_of:m.source||'')+'</p>'+
+    (m.weights?'<p>Веса: '+esc(m.weights)+'</p>':'')+'</details></article>').join(''):'<div class="panel empty-panel">Нет подходящих моделей</div>');
+}
+$('models-search').oninput=renderModels;
+$('models-archive').onchange=renderModels;
+$('models-refresh').onclick=loadModels;
+
 const savedUX=readPrefs();if(savedUX.draft&&typeof savedUX.draft==='object'){for(const el of qsa('#config-overlay input[id]')){const value=savedUX.draft[el.id];if(typeof value==='string'){el.value=value;if(!el.checkValidity())el.value=el.defaultValue}}qsa('[data-preset]').forEach(b=>b.classList.remove('chosen'))}
 if(['value','policy','entropy'].includes(savedUX.metric)){application.metric=savedUX.metric;qsa('[data-metric]').forEach(b=>{const active=b.dataset.metric===application.metric;b.classList.toggle('on',active);b.setAttribute('aria-pressed',String(active))})}
 if(['all','25','100','250'].includes(savedUX.range))$('chart-range').value=savedUX.range;

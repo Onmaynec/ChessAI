@@ -266,16 +266,20 @@ class Workspace:
         row=self.row(c)
         picker=self.ctk.CTkFrame(row,fg_color='transparent')
         picker.pack(side='left',fill='x',expand=True)
-        from .external_session import available
-        self.agent_picker=self.choice(picker,'','',self.checkpoint,[(n,n,n) for n in (*ALIASES,*available())],change=self.on_agent_change)
+        from neural.model_catalog import vision_entries
+        self.catalog_entries=vision_entries(self.run)
+        options=[(r['key'],r['label'],r['label']) for r in self.catalog_entries]
+        if options and self.checkpoint.get() not in [o[0] for o in options]:self.checkpoint.set(options[0][0])
+        self.agent_picker=self.choice(picker,'','',self.checkpoint,options or [('latest.pt','ChessNet Core · недоступна','ChessNet Core · unavailable')],change=self.on_agent_change)
         self.model_hint=self.ctk.CTkFrame(row,fg_color=FIELD,corner_radius=7)
         self.label(self.model_hint,'Выбранная модель','Selected model',size=10,color=MUTED).pack(anchor='w',padx=8,pady=(2,0))
         self.model_hint_text=StableStringVar(value='')
-        self.label(self.model_hint,variable=self.model_hint_text,size=11).pack(anchor='w',padx=8,pady=(0,2))
+        self.label(self.model_hint,variable=self.model_hint_text,size=11,wrap=180).pack(anchor='w',padx=8,pady=(0,2))
         from external_core.uci import PROFILES
         profile_row=self.row(c)
         self.choice(profile_row,'Мощность UCI','UCI performance',self.external_profile,[(n,n,n) for n in PROFILES],lock=True)
         self.button(c,'Multi-Engine Lab · локальная доска','Multi-Engine Lab · local board',self.open_multi_engine,width=240).pack(fill='x',padx=17,pady=6)
+        self.button(c,'Обновить каталог моделей','Refresh model catalog',self.refresh_model_catalog,width=220).pack(fill='x',padx=17,pady=(0,5))
         self.section(c,2,'Область доски','Board region')
         row=self.row(c)
         b=self.button(row,'▣  Выделить область','▣  Select region',self.calibrate,width=150)
@@ -739,12 +743,27 @@ class Workspace:
         r=self.root
         return (r.winfo_ismapped() and rectangles_overlap((r.winfo_rootx(),r.winfo_rooty(),r.winfo_width(),r.winfo_height()),(x,y,s,s))) or self.overlays.overlaps()
 
+    def selected_model_label(self):
+        from neural.model_catalog import model_label
+        return model_label(self.checkpoint.get(),self.catalog_entries)
+
+    def refresh_model_catalog(self):
+        if self.worker and self.worker.is_alive():return
+        from neural.model_catalog import vision_entries
+        self.catalog_entries=vision_entries(self.run)
+        values=[(r['key'],r['label'],r['label']) for r in self.catalog_entries] or [('latest.pt','ChessNet Core · недоступна','ChessNet Core · unavailable')]
+        for i,(widget,var,old) in enumerate(self._choices):
+            if widget is self.agent_picker:self._choices[i]=(widget,var,values);break
+        if self.checkpoint.get() not in [v[0] for v in values]:self.checkpoint.set(values[0][0])
+        self.agent_picker.configure(values=[self.tr(a,b) for _,a,b in values]);self.agent_picker.set(self.selected_model_label() if self.catalog_entries else self.tr(values[0][1],values[0][2]))
+        self._system_signature=None;self.refresh_workspace()
+
     def refresh_workspace(self):
         active=bool(self.worker and self.worker.is_alive())
         if active!=self._active:
             self._active=active
             for w in self._locked+[self.start,self.attach]:w.configure(state='disabled' if active else 'normal')
-        self.model_status.set(self.tr('Модель: ','Model: ')+self.checkpoint.get())
+        self.model_status.set(self.tr('Модель: ','Model: ')+((self._actual_model_label or self.selected_model_label()) if active else self.selected_model_label()))
         self.side_status.set(self.tr('Сторона: ','Side: ')+(self.tr('Белые','White') if self.color.get()=='white' else self.tr('Чёрные','Black')))
         self.region_status.set(self.tr('Доска: ','Board: ')+(f'{self.rect[2]} × {self.rect[2]}' if self.rect else '—'))
         import time
@@ -753,16 +772,16 @@ class Workspace:
         if signature!=self._system_signature or now-getattr(self,'_system_checked',0)>1:
             self._system_signature=signature;self._system_checked=now
             self._engine_exists=self.engine.is_file()
-            from .external_session import EXTERNAL,available
-            self._model_exists=(self.checkpoint.get() in available()) if self.checkpoint.get() in EXTERNAL else (self.run/'checkpoints'/self.checkpoint.get()).is_file()
+            chosen=next((r for r in self.catalog_entries if r['key']==self.checkpoint.get()),None)
+            self._model_exists=bool(chosen and (self.run.parent.parent/chosen['path']).is_file())
             self.engine_status.set(('● ' if self._engine_exists else '○ ')+self.tr('Движок','Engine'))
             self.checkpoint_status.set(('● ' if self._model_exists else '○ ')+self.tr('Модель','Model'))
-            self.model_hint_text.set(self.tr('Файл найден','File available') if self._model_exists else self.tr('Файл отсутствует','File missing'))
+            self.model_hint_text.set((chosen['architecture']+' · '+chosen['role']) if self._model_exists else self.tr('Файл отсутствует','File missing'))
             self.vision_status.set(('● ' if self.rect else '○ ')+self.tr('Область','Region'))
         if self.rect:
             x,y,s=self.rect;self.board_text.set(f'x={x}  y={y}  {s} × {s} px')
         else:self.board_text.set(self.tr('Область не задана','No region selected'))
-        self.summary_text.set(self.checkpoint.get()+' · '+self.tr('Белые','White') if self.color.get()=='white' else self.checkpoint.get()+' · '+self.tr('Чёрные','Black'))
+        self.summary_text.set(self.selected_model_label()+' · '+(self.tr('Белые','White') if self.color.get()=='white' else self.tr('Чёрные','Black')))
         if active and self.panel_overlaps() and not self.ev.is_set():
             self.ev.set();self.add_view_log('error',self.tr('Окно перекрывает доску. Запрошена остановка.','Window overlaps board. Stop requested.'))
         if active:self.state_text.set(self.tr('Остановка…','Stopping…') if self.ev.is_set() else self.tr('Сессия активна','Session active'))

@@ -140,6 +140,7 @@ def file_warnings() -> list[dict[str, str]]:
 
 
 def sessions() -> list[dict]:
+    from neural.model_catalog import run_label
     RUNS.mkdir(parents=True, exist_ok=True)
     out = []
     for path in RUNS.iterdir():
@@ -149,7 +150,7 @@ def sessions() -> list[dict]:
         state = json_file(path / "run_state.json", {})
         if not metadata:
             continue
-        out.append({"id": path.name, "name":metadata.get("name",path.name),
+        out.append({"id": path.name, "name":run_label(path,metadata),
                     "created_at": metadata.get("created_at"),
                     "status": state.get("status", "unknown"),
                     "iteration":state.get("iteration",0),
@@ -386,6 +387,12 @@ def health():
             "local_only":True, "file_warnings":file_warnings(),
             "version":(ROOT/'VERSION').read_text(encoding='utf-8').strip(),
             "evaluation":evaluation_status()}
+
+
+@app.get("/api/models")
+def model_catalog():
+    from neural.model_catalog import inventory
+    return {"schema":"model_catalog_v1","models":inventory(ROOT),"note":"Read-only inventory; hidden files are retained."}
 
 
 @app.get("/api/overview")
