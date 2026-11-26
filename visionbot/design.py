@@ -28,6 +28,12 @@ MONO = 'Consolas'
 SPACE = (4, 8, 12, 16, 20, 24, 32, 40, 48, 64)
 RADIUS = 6
 CONTROL_HEIGHT = 34
+# Logical pixels / milliseconds, shared by the Qt component library.
+TYPE_SCALE = {'caption': 11, 'body': 13, 'section': 17, 'heading': 24, 'metric': 26}
+MOTION = {'fast': 90, 'normal': 150, 'page': 180}
+
+def motion_duration(role, reduced=False):
+    return 0 if reduced else MOTION[role]
 
 def button_style(primary=False):
     return dict(fg_color=ACCENT if primary else FIELD,
