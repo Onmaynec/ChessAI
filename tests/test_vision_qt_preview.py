@@ -52,6 +52,16 @@ class QmlWorkspaceTests(unittest.TestCase):
             self.assertEqual(len(engine.rootObjects()), 1)
             window = engine.rootObjects()[0]
             self.assertEqual(window.objectName(), 'visionWorkspace')
+            from PySide6.QtCore import QMetaObject, Q_ARG
+            for mode in ('compact','expanded','standard'):
+                self.assertTrue(QMetaObject.invokeMethod(window,'switchMode',Q_ARG('QVariant',mode)))
+                app.processEvents()
+                self.assertEqual(window.property('mode'),mode)
+            for key in ('metrics','board','analysis','journal'):
+                self.assertTrue(QMetaObject.invokeMethod(window,'openOverlay',Q_ARG('QVariant',key)))
+                app.processEvents()
+                self.assertTrue(any(w.objectName() == 'overlay_'+key and w.isVisible()
+                                    for w in app.topLevelWindows()))
             for width in (1200, 800, 560):
                 window.setWidth(width)
                 for page in range(4):
@@ -72,6 +82,8 @@ class QmlWorkspaceTests(unittest.TestCase):
             model.filterJournal('', 'analysis')
             self.assertEqual(len(model.journal), 2)
             self.assertEqual(model.journalTotal, 4)
+            self.assertEqual(model.journalCategory, 'analysis')
+            self.assertEqual(model.journalQuery, '')
         finally:
             for window in engine.rootObjects():
                 window.close()
