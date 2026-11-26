@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from .design import TRACK, DIM
 
 def layout_mode(width, height, previous=None):
     # Hysteresis prevents repeated grid changes at a breakpoint.
@@ -31,7 +32,7 @@ class ScrollViewport(tk.Frame):
         super().__init__(parent, bg=background, bd=0, highlightthickness=0)
         self.canvas = tk.Canvas(self, bg=background, bd=0, highlightthickness=0)
         self.scrollbar = (scrollbar_class(self, orientation='vertical', command=self.canvas.yview, width=10,
-                                          fg_color=background, button_color='#353746', button_hover_color='#55586b')
+                                          fg_color=background, button_color=TRACK, button_hover_color=DIM)
                           if scrollbar_class else tk.Scrollbar(self, orient='vertical', command=self.canvas.yview))
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
         self.canvas.pack(side='left', fill='both', expand=True)
